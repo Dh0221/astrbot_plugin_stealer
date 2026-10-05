@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from typing import TYPE_CHECKING
 
 from astrbot.api import logger
@@ -10,6 +11,7 @@ from .retention import library_counts
 from ..db.index_manager import delete_index_paths
 
 from ..util.safe_io import safe_remove_file
+from ..util.normalization import canonicalize_path
 
 if TYPE_CHECKING:
     from ...main import Main  # noqa: F401
@@ -24,6 +26,7 @@ class MaintenanceService:
 
     RAW_CLEANUP_INTERVAL_SECONDS = 30 * 60
     CAPACITY_CONTROL_INTERVAL_SECONDS = 60 * 60
+    ORPHAN_GRACE_SECONDS = 5 * 60
 
     def __init__(self, plugin: "Main") -> None:
         self.plugin = plugin
@@ -90,58 +93,46 @@ class MaintenanceService:
             if not db:
                 return
 
-            all_paths = db.get_all_paths()
+            all_paths = await asyncio.to_thread(db.get_all_paths)
+            stale_paths = [path for path in all_paths if path and not os.path.isfile(str(path))]
+            if stale_paths:
+                await delete_index_paths(self.plugin, stale_paths)
+                logger.info(f"[Orphan] Removed {len(stale_paths)} missing library paths")
 
-            if all_paths:
-                stale_paths = [
-                    p for p in all_paths if p and not os.path.isfile(str(p))
-                ]
-                if stale_paths:
-                    await delete_index_paths(self.plugin, stale_paths)
-                    logger.info(
-                        f"[Orphan] 清除 {len(stale_paths)} 条失效索引（文件已丢失）"
-                    )
+            pending_rows = await asyncio.to_thread(db.get_pending_paginated, page=1, page_size=100000)
+            pending = pending_rows[0] if pending_rows else []
+            stale_ids = [row["id"] for row in pending if row.get("path") and not os.path.isfile(str(row["path"]))]
+            if stale_ids:
+                await asyncio.to_thread(db.delete_pending_batch, stale_ids)
+                logger.info(f"[Orphan] Removed {len(stale_ids)} missing pending paths")
 
-                pending_rows = db.get_pending_paginated(page=1, page_size=100000)
-                if pending_rows and pending_rows[0]:
-                    stale_ids = [
-                        r["id"]
-                        for r in pending_rows[0]
-                        if r.get("path") and not os.path.isfile(str(r.get("path")))
-                    ]
-                    if stale_ids:
-                        db.delete_pending_batch(stale_ids)
-                        logger.info(
-                            f"[Orphan] 清除 {len(stale_ids)} 条失效待审核记录"
-                        )
-
-                db_count = db.count_total()
-                if db_count == 0:
-                    return
-
-                db_paths = set(all_paths)
-                pending_db_paths = set(
-                    r.get("path")
-                    for r in (pending_rows[0] if pending_rows else [])
-                    if r.get("path")
-                )
-
-                categories_dir = str(self.plugin.plugin_config.categories_dir)
-                if os.path.isdir(categories_dir):
-                    for root, _dirs, files in os.walk(categories_dir):
-                        for fname in files:
-                            fpath = os.path.join(root, fname)
-                            if fpath not in db_paths:
-                                await safe_remove_file(fpath)
-
-                pending_dir = str(self.plugin.plugin_config.pending_dir)
-                if os.path.isdir(pending_dir):
-                    for fname in os.listdir(pending_dir):
-                        fpath = os.path.join(pending_dir, fname)
-                        if os.path.isfile(fpath) and fpath not in pending_db_paths:
-                            await safe_remove_file(fpath)
+            # Retain uncatalogued physical files when the main library is empty.
+            if await asyncio.to_thread(db.count_total) == 0:
+                return
+            db_paths = {canonicalize_path(path) for path in all_paths}
+            pending_paths = {canonicalize_path(row["path"]) for row in pending if row.get("path")}
+            categories = self.plugin.plugin_config.categories_dir
+            if os.path.isdir(categories):
+                for root, _dirs, files in os.walk(categories):
+                    for name in files:
+                        path = os.path.join(root, name)
+                        if canonicalize_path(path) not in db_paths and not self._recent_publication(path):
+                            await safe_remove_file(path)
+            pending_dir = self.plugin.plugin_config.pending_dir
+            if os.path.isdir(pending_dir):
+                for name in os.listdir(pending_dir):
+                    path = os.path.join(pending_dir, name)
+                    if (os.path.isfile(path) and canonicalize_path(path) not in pending_paths
+                            and not self._recent_publication(path)):
+                        await safe_remove_file(path)
         except Exception as e:
             logger.debug(f"[Orphan] 孤儿扫描异常（不阻塞）: {e}")
+
+    def _recent_publication(self, path: str) -> bool:
+        try:
+            return time.time() - os.stat(path).st_ctime < self.ORPHAN_GRACE_SECONDS
+        except OSError:
+            return False
 
     async def _clean_legacy_files(self) -> None:
         """删除迁移残留文件：.backup / .migrated / index.json 等。"""

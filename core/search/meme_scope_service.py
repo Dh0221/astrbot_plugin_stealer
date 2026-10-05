@@ -42,7 +42,7 @@ class MemeScopeService:
         origin_target = str(data.get("origin_target", "") or "").strip()
         current_target = self._get_event_target_entry(event)
         if not origin_target or not current_target:
-            return True
+            return False
         return origin_target == current_target
 
     def is_path_allowed_for_event(self, path: str, event: AstrMessageEvent | None) -> bool:

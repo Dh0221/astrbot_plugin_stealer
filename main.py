@@ -664,32 +664,28 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
             yield result
 
     @filter.llm_tool(name=SEARCH_MEME_TOOL_NAME)
-    async def search_meme(self, event: AstrMessageEvent, query: str):
-        """从插件索引中搜索表情包候选；不要直接浏览表情库目录或发送本地文件。
+    async def search_meme(self, event: AstrMessageEvent, query: str, reply: str = "", character: str = ""):
+        """搜索表情包并返回编号、图上文字、角色和适合回应的场景。
+
+        聊天中想表达情绪、接梗或自然回应时可主动使用，无需用户要求发表情。
+        表情可单独回应，也可配合文字；按语境和交流节奏使用。
+        核对候选与回复立场，合适时调用 send_meme(emoji_id=编号)。编号仅本次搜索有效。
+        候选不合适可补充台词重搜或用文字回复。选图和发图请使用这组工具，避免读取目录或猜测文件路径。
 
         Args:
-            query(string): 2-8 个检索关键词。优先写图上文字、角色名、画面或语气，例如“猫猫 震惊 怎么会这样”。
+            query(string): 想表达的台词、语气或使用场景，支持自然句，例如“安慰刚加班的朋友”。
+            reply(string): 可选，准备说的文字；单独用表情回应时可留空。
+            character(string): 可选，指定角色键或显示名；只在该角色中找图。
 
-        使用建议：
-        - 这是从表情库选图的唯一入口；不要使用文件、终端或通用消息工具绕过它
-        - 若候选不合适，换图上原文、角色名或更具体的画面词再次调用本工具
-
-        返回值：
-        返回候选表情包列表，每个包含：
-        - 编号：用于调用 send_meme
-        - 分类：浏览分区，仅供参考
-        - 角色 / 图上文字 / 描述：选图时优先看这些
-
-        根据候选的图上文字、角色和描述选择最贴合的一张，然后调用 send_meme；不要猜测或传递文件路径。
         """
-        async for result in self._search_meme_impl(event, query):
+        async for result in self._search_meme_impl(event, query, reply, character):
             yield result
 
     @filter.llm_tool(name=SEND_MEME_TOOL_NAME)
     async def send_meme(self, event: AstrMessageEvent, emoji_id: int):
         """发送 search_meme 返回的候选表情包；不要猜测或直接传递文件路径。
 
-        选择原则：优先发送能代表你"当前心情词"的候选项。
+        选择原则：核对图上文字和适用场景，保持与当前回复的立场一致；候选不合适时可以不发送。
 
         Args:
             emoji_id(number): 表情包编号（从 search_meme 返回的候选列表中选择）
@@ -924,6 +920,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
                     logger.warning(f"[Embedding] 初始化失败: {e}")
 
             logger.info("[Stealer] 插件初始化完成")
+            self.index_manager.start_search_worker()
         except Exception as e:
             logger.error(f"初始化插件失败: {e}")
             raise
@@ -933,6 +930,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         if self._terminated:
             return
         self._terminated = True
+        await self.index_manager.stop_search_worker()
         try:
             await self.task_scheduler.cancel_task("raw_cleanup_loop")
             await self.task_scheduler.cancel_task("capacity_control_loop")

@@ -228,7 +228,7 @@ class TestSearchImagesDeduplication:
         }
         self.selector._search_engine._bm25_dirty = True
 
-    def test_recently_used_paths_excluded_from_search(self):
+    def test_explicit_search_can_find_recently_used_matching_paths(self):
         self.selector._selection_strategy._update_recent_usage("happy", "/path/happy_1.png")
         self.selector._search_engine._bm25_dirty = True
         import asyncio
@@ -236,7 +236,7 @@ class TestSearchImagesDeduplication:
             self.selector.search_images("开心", limit=3, idx=self.plugin.index)
         )
         result_paths = [r[0] for r in results]
-        assert "/path/happy_1.png" not in result_paths
+        assert "/path/happy_1.png" in result_paths
 
     def test_unused_paths_included_in_search(self):
         self.selector._search_engine._bm25_dirty = True

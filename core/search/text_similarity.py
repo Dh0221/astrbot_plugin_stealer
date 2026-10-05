@@ -7,7 +7,11 @@ import heapq
 import math
 import re
 from collections import Counter
+from difflib import SequenceMatcher
 from functools import lru_cache
+
+from rank_bm25 import BM25Plus
+from rapidfuzz.distance.Levenshtein import distance as _levenshtein_distance
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
 _PUNCT_RE = re.compile(r"[^\w\s]")
@@ -26,7 +30,6 @@ _SIM_WEIGHTS: dict[str, float] = {
 _NEGATION_PENALTY: float = 0.25  # 否定词语义反转惩罚系数
 _BM25_K1: float = 1.5
 _BM25_B: float = 0.75
-EPSILON = 0.25
 
 
 def configure_similarity(
@@ -53,95 +56,24 @@ def configure_similarity(
 
 
 class BM25:
-    def __init__(self, corpus: list[list[str]], k1: float | None = None, b: float | None = None):
-        self.k1 = k1 if k1 is not None else _BM25_K1
-        self.b = b if b is not None else _BM25_B
-        self.corpus_size = 0
-        self.avgdl = 0
-        self.doc_freqs: dict[str, int] = {}
-        self.idf: dict[str, float] = {}
-        self.doc_len: list[int] = []
-        self.doc_term_freqs: list[dict[str, int]] = []
-        self._inverted_index: dict[str, set[int]] = {}
-        self._initialize(corpus)
+    """Compatibility adapter for AstrBot's rank-bm25 dependency."""
+    def __init__(self, corpus, k1=None, b=None):
+        normalized = [[str(term).lower() for term in document] for document in corpus]
+        self.corpus_size = len(normalized)
+        self._model = BM25Plus(
+            normalized, k1=_BM25_K1 if k1 is None else k1,
+            b=_BM25_B if b is None else b, delta=0,
+        ) if any(normalized) else None
+        self.idf = self._model.idf if self._model is not None else {}
 
-    def _initialize(self, corpus: list[list[str]]) -> None:
-        nd: dict[str, list[int]] = {}
-        self.doc_len = []
-        self.doc_term_freqs = []
-        self._inverted_index = {}
+    def get_scores(self, query) -> list[float]:
+        if self._model is None:
+            return [0.0] * self.corpus_size
+        return self._model.get_scores([str(term).lower() for term in query]).tolist()
 
-        for doc_idx, document in enumerate(corpus):
-            self.doc_len.append(len(document))
-            frequencies: dict[str, int] = {}
-            for word in document:
-                word_lower = word.lower()
-                frequencies[word_lower] = frequencies.get(word_lower, 0) + 1
-                if word_lower not in self._inverted_index:
-                    self._inverted_index[word_lower] = set()
-                self._inverted_index[word_lower].add(doc_idx)
-            self.doc_term_freqs.append(frequencies)
-            for word, freq in frequencies.items():
-                if word not in nd:
-                    nd[word] = []
-                nd[word].append(freq)
-            self.corpus_size += 1
-
-        self.avgdl = sum(self.doc_len) / self.corpus_size if self.corpus_size else 1
-
-        for word, freq_list in nd.items():
-            df = len(freq_list)
-            self.doc_freqs[word] = df
-            self.idf[word] = math.log((self.corpus_size - df + 0.5) / (df + 0.5) + 1)
-
-    def get_scores(self, query: list[str]) -> list[float]:
-        scores = [0.0] * self.corpus_size
-        for i in range(self.corpus_size):
-            scores[i] = self._calculate_score(query, i)
-        return scores
-
-    def get_top_k(self, query: list[str], k: int = 10) -> list[tuple[int, float]]:
-        query_lower = [term.lower() for term in query]
-        query_term_counts = Counter(query_lower)
-
-        candidate_docs: set[int] = set()
-        for term in query_term_counts.keys():
-            if term in self._inverted_index:
-                candidate_docs.update(self._inverted_index[term])
-
-        if not candidate_docs:
-            return []
-
-        heap: list[tuple[float, int]] = []
-        for doc_idx in candidate_docs:
-            score = self._calculate_score(query, doc_idx)
-            if len(heap) < k:
-                heapq.heappush(heap, (-score, doc_idx))
-            elif -heap[0][0] < score:
-                heapq.heapreplace(heap, (-score, doc_idx))
-
-        result = [(doc_idx, -score) for score, doc_idx in heap]
-        result.sort(key=lambda x: x[1], reverse=True)
-        return result
-
-    def _calculate_score(self, query: list[str], doc_index: int) -> float:
-        score = 0.0
-        doc_len = self.doc_len[doc_index]
-        doc_tf = self.doc_term_freqs[doc_index]
-        query_lower = [term.lower() for term in query]
-        query_term_counts: Counter[str] = Counter(query_lower)
-
-        for term, query_count in query_term_counts.items():
-            if term not in self.doc_freqs:
-                continue
-            freq_tf = doc_tf.get(term, 0)
-            if freq_tf == 0:
-                continue
-            idf = self.idf.get(term, 0)
-            numerator = freq_tf * (self.k1 + 1)
-            denominator = freq_tf + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)
-            score += idf * numerator / (denominator + EPSILON)
-        return score
+    def get_top_k(self, query, k=10) -> list[tuple[int, float]]:
+        scores = ((index, score) for index, score in enumerate(self.get_scores(query)) if score > 0)
+        return heapq.nlargest(max(0, k), scores, key=lambda item: item[1])
 
 
 @lru_cache(maxsize=8192)
@@ -536,40 +468,7 @@ def _substring_similarity(text1: str, text2: str) -> float:
 
 
 def _longest_common_substring_length(s1: str, s2: str) -> int:
-    """计算最长公共子串长度（空间优化版）
-
-    Args:
-        s1: 较短字符串
-        s2: 较长字符串
-
-    Returns:
-        int: 最长公共子串长度
-    """
-    if not s1 or not s2:
-        return 0
-
-    # 确保 s1 是较短的
-    if len(s1) > len(s2):
-        s1, s2 = s2, s1
-
-    max_len = 0
-    prev = [0] * (len(s2) + 1)
-
-    for i in range(len(s1)):
-        curr = [0] * (len(s2) + 1)
-        for j in range(len(s2)):
-            if s1[i] == s2[j]:
-                curr[j + 1] = prev[j] + 1
-                if curr[j + 1] > max_len:
-                    max_len = curr[j + 1]
-        prev = curr
-
-    return max_len
-
-
-# ──────────────────────────────────────────────────────────────
-# 中文字符级相似度
-# ──────────────────────────────────────────────────────────────
+    return SequenceMatcher(None, s1, s2, autojunk=False).find_longest_match().size
 
 
 def _chinese_char_similarity(text1: str, text2: str) -> float:
@@ -602,35 +501,6 @@ def _chinese_char_similarity(text1: str, text2: str) -> float:
 # ──────────────────────────────────────────────────────────────
 # 编辑距离
 # ──────────────────────────────────────────────────────────────
-
-
-def _levenshtein_distance(s1: str, s2: str) -> int:
-    """计算两个字符串的编辑距离（Levenshtein距离）
-
-    Args:
-        s1: 第一个字符串
-        s2: 第二个字符串
-
-    Returns:
-        int: 编辑距离
-    """
-    if len(s1) < len(s2):
-        s1, s2 = s2, s1
-
-    if not s2:
-        return len(s1)
-
-    previous_row = list(range(len(s2) + 1))
-    for i, c1 in enumerate(s1):
-        current_row = [i + 1]
-        for j, c2 in enumerate(s2):
-            insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1
-            substitutions = previous_row[j] + (c1 != c2)
-            current_row.append(min(insertions, deletions, substitutions))
-        previous_row = current_row
-
-    return previous_row[-1]
 
 
 @lru_cache(maxsize=8192)

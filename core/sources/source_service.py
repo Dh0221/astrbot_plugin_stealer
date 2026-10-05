@@ -19,6 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from PIL import Image, UnidentifiedImageError
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 from ..db.index_manager import invalidate_search, refresh_search_entry
 
 from ..util.normalization import (
@@ -98,7 +99,11 @@ class SourceService:
     def __init__(self, plugin: Any) -> None:
         self.plugin = plugin
         self.db = getattr(plugin, "db_service", None)
-        self.data_dir = Path(getattr(plugin, "base_dir", Path.cwd())).resolve()
+        directory = getattr(plugin, "base_dir", None) or getattr(getattr(plugin, "plugin_config", None), "data_dir", None)
+        self.data_dir = Path(directory or StarTools.get_data_dir("astrbot_plugin_stealer"))
+        if not self.data_dir.is_absolute():
+            raise ValueError("plugin data directory must be absolute")
+        self.data_dir = self.data_dir.resolve()
         self.import_dir = self.data_dir / "external_sources"
         self._jobs: dict[str, dict[str, Any]] = {}
         self._tasks: dict[str, asyncio.Task[Any]] = {}

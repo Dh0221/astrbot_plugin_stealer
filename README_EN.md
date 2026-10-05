@@ -60,14 +60,14 @@ The plugin is open source and free to use. Issues and pull requests are welcome 
 
 ### 3. Getting started
 
-```
+```text
 /meme on        # Enable emoji stealing
 /meme auto_on   # Enable auto-sending
 ```
 
 Pause collection at any time:
 
-```
+```text
 /meme off       # Disable stealing; collected memes remain available
 ```
 
@@ -99,7 +99,7 @@ Open **External Sources** in the WebUI to:
 
 Recommended pack layout:
 
-```
+```text
 pack/
 ├── manifest.json                 # pack metadata
 ├── memes/<category>/<image>      # required image directory
@@ -138,7 +138,8 @@ LLM emotion mode uses a lightweight model to extract search terms and emotion pr
 
 All public settings can be changed in the AstrBot admin panel. Defaults below match `_conf_schema.json` and the runtime configuration.
 
-### Stealing Settings
+<details open>
+<summary><strong>Stealing Settings</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -150,7 +151,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Require manual review for auto-steal** | `true` | Route auto-collected images to Review Queue; when disabled, validated images enter the library directly |
 | **QQ_Official collection mode** | `cdn_only` | `all_images` collects every image; `cdn_only` uses emoji CDN markers; `gif_only` keeps GIFs only |
 
-### Sending Settings
+</details>
+
+<details open>
+<summary><strong>Sending Settings</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -165,7 +169,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Maximum random delay (seconds)** | `8.0` | Upper bound for random delay |
 | **Smart emoji selection** | `true` | Use composite matching scores; disabled mode picks randomly while avoiding short-term repeats |
 
-### Emotion Recognition
+</details>
+
+<details>
+<summary><strong>Emotion Recognition</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -173,7 +180,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Emotion analysis model** | `""` | Leave blank to use the current session model |
 | **Emotion analysis prompt** | `""` | Leave blank for the bundled template; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
 
-### Model Configuration
+</details>
+
+<details>
+<summary><strong>Model Configuration</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -181,7 +191,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Enable embedding search** | `false` | Use FaissVecDB semantic retrieval; falls back to BM25 when unavailable |
 | **Embedding model ID** | `""` | Leave blank for AstrBot's first Embedding Provider; enter an Embedding model ID, not a chat or vision model ID |
 
-### Group Filtering
+</details>
+
+<details>
+<summary><strong>Group Filtering</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -192,7 +205,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Steal blacklist** | `[]` | Can coexist with the whitelist |
 | **Steal filter priority** | `whitelist_first` | `whitelist_first` or `blacklist_first` |
 
-### Storage, Prompts, and Smart Selection
+</details>
+
+<details>
+<summary><strong>Storage, Prompts, and Smart Selection</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -202,7 +218,10 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **VLM classification prompt (with filtration)** | `""` | Used when content filtration is enabled; blank uses the bundled template |
 | **Text-distance weight preset** | `balanced` | `balanced`, `keyword`, `semantic`, or `strict` for smart-selection weights |
 
-### External Meme Sources
+</details>
+
+<details>
+<summary><strong>External Meme Sources</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
@@ -212,11 +231,16 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Maximum images per source** | `2000` | Limit preflight and one synchronization run |
 | **Per-image / archive / expanded / pixel limit** | `32 MiB / 1 GiB / 4 GiB / 40 million` | Protect against oversized responses, decompression bombs, and huge images |
 
-### WebUI
+</details>
+
+<details>
+<summary><strong>WebUI</strong></summary>
 
 | Setting | Default | Description |
 |:---|:---|:---|
 | **WebUI default theme** | `auto` | `auto`, `dark`, `light`, `minecraft`, or `fallout`; page-level choices persist |
+
+</details>
 
 ## 🔄 Emotion Analysis Modes
 

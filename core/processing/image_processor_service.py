@@ -10,9 +10,10 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from ..util.safe_io import safe_remove_file
+from ..util.safe_io import commit_image_file, safe_remove_file, unique_image_path
 from ..util.normalization import normalize_label_list
 from .semantic_schema import MAX_DESC_CHARS, clip_chars
+from ..db.index_manager import refresh_search_entry
 
 try:
     from PIL import Image as PILImage
@@ -239,90 +240,47 @@ class ImageProcessorService:
         original_name: str = "",
         add_method: str = "auto",
     ) -> tuple[bool, dict[str, Any] | None]:
-        """将图片存储到 raw → 复制到分类目录 → 删除 raw → 更新索引。
-
-        Args:
-            already_in_raw: 若为 True，则 file_path 已在 raw 目录中，
-                            跳过 move/copy-to-raw 步骤，直接作为 raw_path 使用。
-            source_url: 图片来源 URL（尽力获取，可能为空）
-            original_name: 原始文件名
-            add_method: 入库方式 auto/manual/llm
-
-        Returns:
-            (成功与否, 更新后的索引)
-        """
-        if already_in_raw:
-            raw_path = file_path
-        else:
-            # 存储图片到raw目录
-            raw_dir = self.plugin_config.ensure_raw_dir()
-            if raw_dir:
-                base_path = Path(file_path)
-                ext = base_path.suffix.lower() if base_path.suffix else ".jpg"
-                filename = f"{int(time.time())}_{hash_val[:8]}{ext}"
-                raw_path = str(raw_dir / filename)
-                if is_temp:
-                    await asyncio.to_thread(shutil.move, file_path, raw_path)
-                else:
-                    await asyncio.to_thread(shutil.copy2, file_path, raw_path)
-            else:
-                raw_path = file_path
-
-        # 复制图片到对应分类目录
+        """Publish one asset and commit only its metadata, retaining the source on failure."""
+        if not os.path.isfile(file_path):
+            return False, None
+        db = getattr(self.plugin, "db_service", None)
+        if db is None:
+            raise RuntimeError("database unavailable")
         cat_dir = self.plugin_config.ensure_category_dir(category)
-        cat_path = str(cat_dir / os.path.basename(raw_path)) if cat_dir else raw_path
+        filename = os.path.basename(file_path)
+        cat_path = str(unique_image_path(cat_dir, filename))
+        async def commit_entry(_target):
+            entry = await self._build_image_entry(
+                cat_path, hash_val, category, extra_meta, tags, desc, scenes,
+                phash_val, source_url, original_name, add_method,
+            )
+            await db.sync_index({cat_path: entry})
+            return entry
+        entry = await commit_image_file(file_path, cat_path, commit_entry, consume=is_temp or already_in_raw)
+        idx[cat_path] = entry
+        await refresh_search_entry(self.plugin, cat_path, entry)
+        return True, {cat_path: entry}
 
-        if not os.path.exists(raw_path):
-            logger.warning(f"原始文件已不存在，可能被清理: {raw_path}")
-            return False, None
-
-        try:
-            if cat_dir:
-                await asyncio.to_thread(shutil.copy2, raw_path, cat_path)
-        except FileNotFoundError:
-            logger.warning(f"复制文件时发现文件已被删除: {raw_path}")
-            return False, None
-
-        # 立即删除raw目录中的原始文件
-        try:
-            if os.path.exists(raw_path):
-                await safe_remove_file(raw_path)
-                logger.debug(f"已删除已分类的原始文件: {raw_path}")
-        except Exception as e:
-            logger.warning(f"删除已分类的原始文件失败: {raw_path}, 错误: {e}")
-
-        # 更新图片索引
-        entry: dict[str, Any] = {
-            "hash": hash_val,
-            "category": category,
-            "created_at": int(time.time()),
-            "use_count": 0,
-            "last_used_at": 0,
+    async def _build_image_entry(
+        self, path, image_hash, category, extra_meta, tags, desc, scenes,
+        phash, source_url, original_name, add_method,
+    ) -> dict[str, Any]:
+        entry = {
+            "hash": image_hash, "category": category,
+            "created_at": int(time.time()), "use_count": 0, "last_used_at": 0,
+            "phash": phash or None, "tags": tags or [],
+            "desc": clip_chars(desc, MAX_DESC_CHARS), "scenes": scenes or [],
         }
-        if phash_val:
-            entry["phash"] = phash_val
-        if tags:
-            entry["tags"] = tags
-        if desc:
-            entry["desc"] = clip_chars(desc, MAX_DESC_CHARS)
-        if scenes:
-            entry["scenes"] = scenes
-        if extra_meta and isinstance(extra_meta, dict):
-            # Avoid overriding core fields that stealer relies on.
-            for k, v in extra_meta.items():
-                if k in {"hash", "category", "created_at", "use_count", "last_used_at"}:
-                    continue
-                entry[k] = v
-        # v5 元数据：图片尺寸/格式/字节数 + 来源信息 + 入库方式
-        entry.update(self._probe_image_metadata(cat_path if os.path.exists(cat_path) else raw_path))
+        for key, value in (extra_meta or {}).items():
+            if key not in entry and key != "path":
+                entry[key] = value
+        entry.update(await asyncio.to_thread(self._probe_image_metadata, path))
         if source_url:
             entry["source_url"] = source_url
         if original_name:
             entry["original_name"] = original_name
         entry["add_method"] = add_method
-        idx[cat_path] = entry
-
-        return True, idx
+        return entry
 
     async def _store_to_pending(
         self,
@@ -383,60 +341,24 @@ class ImageProcessorService:
         base_path = Path(file_path)
         ext = base_path.suffix.lower() if base_path.suffix else ".jpg"
         pending_filename = f"{int(time.time())}_{hash_val[:8]}{ext}"
-        pending_path = str(pending_dir / pending_filename)
-
+        pending_path = str(unique_image_path(pending_dir, pending_filename))
         try:
-            # 源文件统一 move 到 pending：temp（cache 命中/on_message）或 raw（主分支）均是中间文件
-            if os.path.abspath(file_path) != os.path.abspath(pending_path):
-                await asyncio.to_thread(shutil.move, file_path, pending_path)
-        except Exception as e:
-            logger.error(f"pending: 移动文件到 pending 失败: {file_path} -> {pending_path}, {e}")
+            async def commit_pending(_target):
+                meta = await self._build_image_entry(
+                    pending_path, hash_val, category, extra_meta, tags, desc, scenes,
+                    phash_val, source_url, original_name, add_method,
+                )
+                meta["path"] = pending_path
+                pending_id = await db.insert_pending(meta)
+                if pending_id is None:
+                    raise RuntimeError("pending metadata insertion failed")
+                return pending_id
+            pending_id = await commit_image_file(file_path, pending_path, commit_pending,
+                                                 consume=is_temp or already_in_raw)
+        except Exception as exc:
+            logger.error(f"pending publication failed: {exc}")
             return False, None
-
-        if not os.path.exists(pending_path):
-            logger.warning(f"pending: 落盘后文件不存在: {pending_path}")
-            return False, None
-
-        meta: dict[str, Any] = {
-            "path": pending_path,
-            "hash": hash_val,
-            "phash": phash_val or None,
-            "category": category,
-            "desc": clip_chars(desc, MAX_DESC_CHARS) or None,
-            "tags": tags or [],
-            "scenes": scenes or [],
-        }
-        if extra_meta and isinstance(extra_meta, dict):
-            for k, v in extra_meta.items():
-                if k in {"path", "hash", "phash", "category", "desc", "tags", "scenes"}:
-                    continue
-                meta[k] = v
-            if "scope_mode" not in extra_meta:
-                meta.setdefault("scope_mode", "public")
-        # v5 元数据：图片尺寸/格式/字节数 + 来源信息 + 入库方式（与正式库同构）
-        meta.update(self._probe_image_metadata(pending_path))
-        if source_url:
-            meta["source_url"] = source_url
-        if original_name:
-            meta["original_name"] = original_name
-        meta["add_method"] = add_method
-
-        try:
-            pending_id = await self.plugin.db_service.insert_pending(meta)
-        except Exception as e:
-            logger.error(f"pending: 写 emoji_pending 失败，回滚删除 pending 文件: {e}")
-            await safe_remove_file(pending_path)
-            return False, None
-
-        if pending_id is None:
-            # 同 path 已在 pending（UNIQUE 冲突）：删除本次落盘的多余文件，保持池内唯一
-            logger.debug(f"pending: 已存在同路径记录，移除重复文件: {pending_path}")
-            await safe_remove_file(pending_path)
-            return False, None
-
-        logger.info(
-            f"pending: 已存入待审核池 id={pending_id} cat={category} hash={hash_val[:16]}"
-        )
+        logger.info(f"pending: id={pending_id} cat={category} hash={hash_val[:16]}")
         return True, None
 
     async def process_image(
@@ -589,9 +511,6 @@ class ImageProcessorService:
             if is_temp:
                 if os.path.exists(file_path):
                     await safe_remove_file(file_path)
-                # 如果已移入 raw 目录，原路径可能已不存在，同时清理 raw 路径
-                if raw_path is not None and raw_path != file_path and os.path.exists(raw_path):
-                    await safe_remove_file(raw_path)
             raise
         finally:
             # 8. 清理处理中标记（确保总是清理）
@@ -625,9 +544,14 @@ class ImageProcessorService:
                 return True
             image_phash = phash_val or await self._phash_service.compute_phash(file_path)
             if image_phash:
-                for existing_phash in db.get_phash_map().values():
+                for existing_path, existing_phash in db.get_phash_map().items():
                     distance = self._phash_service.hamming_distance(image_phash, existing_phash)
                     if distance <= self._phash_service.PHASH_HAMMING_THRESHOLD:
+                        # Older databases can contain first-frame hashes for animations.
+                        if not os.path.isfile(existing_path):
+                            continue
+                        if not await self._phash_service.compute_phash(existing_path):
+                            continue
                         logger.debug(f"[去重] 感知哈希命中: 距离={distance}")
                         await _cleanup_temp()
                         return True
@@ -823,7 +747,7 @@ class ImageProcessorService:
             normalized_desc = f"来自群聊的{cat_display}表情包"
 
         # 1. 加载完整索引（避免覆盖已有数据）
-        full_idx = await self.plugin.index_manager.load_index()
+        full_idx = {}
 
         # 2. 计算哈希
         hash_val = await self._compute_hash(file_path)

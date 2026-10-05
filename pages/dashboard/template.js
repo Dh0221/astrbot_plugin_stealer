@@ -240,6 +240,24 @@ export const TEMPLATE = `
                     <p>{{ t('pages.dashboard.libraries.hint', '仅通用库普通表情参与自动淘汰，收藏和角色库另行管理。') }}</p>
                 </details>
             </header>
+            <details class="usage-guide" :open="stats.total === 0">
+                <summary>{{ t('pages.dashboard.guide.title', '开始使用 · 让表情接上你的话') }}</summary>
+                <ol>
+                    <li><strong>{{ t('pages.dashboard.guide.collect', '准备图库') }}</strong><span>{{ t('pages.dashboard.guide.collect_hint', '上传图片并分析，或在插件配置中开启收集、选择视觉模型。') }}</span></li>
+                    <li><strong>{{ t('pages.dashboard.guide.review', '确认内容') }}</strong><span>{{ t('pages.dashboard.guide.review_hint', '在待审核区通过图片；检查图上文字和“适合回应”的句子，再分配角色。') }}</span></li>
+                    <li><strong>{{ t('pages.dashboard.guide.chat', '正常聊天') }}</strong><span>{{ t('pages.dashboard.guide.chat_hint', 'Bot 在聊天中结合语境主动表达情绪、接梗和回应，无需点名要求发表情；遇到不合适的候选就跳过。') }}</span></li>
+                </ol>
+                <p>{{ t('pages.dashboard.guide.pending_hint', '待审核图片不会参与发送。图片已入库但仍选不准时，可预览重新分析，再确认写回。') }}</p>
+                <div class="usage-guide-actions">
+                    <button type="button" class="codex-btn primary" @click="openUploadModal">{{ t('pages.dashboard.guide.upload', '上传并分析') }}</button>
+                    <button type="button" class="codex-btn" @click="switchSection('pending')">{{ t('pages.dashboard.guide.pending', '去审核') }}</button>
+                </div>
+                <div v-if="setupInfo" class="usage-guide-status" aria-live="polite">
+                    <span>{{ t('pages.dashboard.guide.auto', '自动发送') }} · {{ setupInfo.auto_send_enabled ? t('pages.dashboard.guide.on', '开启') : t('pages.dashboard.guide.off', '关闭') }}</span>
+                    <span>{{ t('pages.dashboard.guide.context', '语境理解') }} · {{ setupInfo.context_enabled ? t('pages.dashboard.guide.on', '开启') : t('pages.dashboard.guide.off', '关闭') }}</span>
+                    <span>{{ t('pages.dashboard.guide.embedding', '语义检索') }} · {{ setupInfo.embedding_enabled ? t('pages.dashboard.guide.on', '开启') : t('pages.dashboard.guide.off', '关闭') }}</span>
+                </div>
+            </details>
             <div class="inventory-toolbar">
                 <div class="toolbar-search">
                     <svg style="width:16px;height:16px;position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted)"

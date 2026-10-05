@@ -43,7 +43,7 @@
         },
         "auto_send_meme": {
             "description": "Auto-send stickers in chat",
-            "hint": "Bot will automatically send stickers during conversation. Disable to only collect without storing, or send manually via commands."
+            "hint": "Automatically add a meme when the context and send probability fit. The LLM can also use meme tools proactively without an explicit request."
         },
         "auto_meme_cancel_on_new_message": {
             "description": "Cancel pending auto-send on new message",
@@ -192,6 +192,14 @@
         "sim_weight_preset": {
             "description": "Text-distance fusion preset",
             "hint": "Preset controls how multiple similarity algorithms are fused: Balanced (default), Keyword-first (substring/character overlap), Semantic-first (n-gram/cosine), Strict (edit distance & character-level, reduces false sends)."
+        },
+        "show_advanced_settings": {
+            "description": "Show advanced settings",
+            "hint": "Reveal tuning, per-session filters and external-source options. Existing values remain active when hidden."
+        },
+        "meme_send_char_delay": {
+            "description": "Extra delay per reply character (seconds)",
+            "hint": "Default 0 uses the fixed send delay. Enable only to add a reading delay."
         }
     },
     "pages": {
@@ -232,7 +240,7 @@
                 "paused_hint": "Stealing is paused and will resume after review."
             },
             "search": {
-                "library": "Search stickers...",
+                "library": "Text, tags, filename; separate words with spaces",
                 "pending": "Search pending stickers..."
             },
             "sort": {
@@ -386,10 +394,10 @@
                 "hash": "Hash"
             },
             "placeholders": {
-                "edit_scene": "Example: 算了, 躺平",
+                "edit_scene": "Incoming messages: I just worked overtime, I need a hug",
                 "edit_tags": "Example: cute, funny, rare",
                 "select_category": "Select a category...",
-                "upload_scene": "Example: 算了, 躺平",
+                "upload_scene": "Incoming messages: I just worked overtime, I need a hug",
                 "upload_tags": "Example: cute, funny",
                 "upload_desc": "Describe this sticker...",
                 "category_key": "Key (e.g. happy)",
@@ -571,6 +579,23 @@
                 "character": "Character protected",
                 "protected": "Protected copy",
                 "automatic": "Automatic eviction"
+            },
+            "guide": {
+                "title": "Get started · Match the conversation",
+                "collect": "Prepare the library",
+                "collect_hint": "Upload and analyze images, or enable collection and choose a vision model in plugin settings.",
+                "review": "Check the content",
+                "review_hint": "Approve collected images, check the overlay text and incoming messages they suit, then assign characters.",
+                "chat": "Chat naturally",
+                "chat_hint": "The bot can express emotion, share a joke or react with a meme during ordinary conversation. No explicit request is needed; unsuitable candidates are skipped.",
+                "pending_hint": "Pending images are not sent. If an approved image matches poorly, preview a new analysis and confirm before saving.",
+                "upload": "Upload and analyze",
+                "pending": "Review images",
+                "auto": "Auto send",
+                "context": "Context analysis",
+                "embedding": "Semantic search",
+                "on": "On",
+                "off": "Off"
             }
         }
     }

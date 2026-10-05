@@ -6,23 +6,23 @@
     },
     "config": {
         "_steal_section": {
-            "description": "偷图设置",
+            "description": "=== 偷图设置 ===",
             "hint": ""
         },
         "_send_section": {
-            "description": "发送设置",
+            "description": "=== 发送设置 ===",
             "hint": ""
         },
         "_model_section": {
-            "description": "模型配置（视觉 / 情绪分析 / 嵌入检索）",
+            "description": "=== 模型配置 ===",
             "hint": ""
         },
         "_group_section": {
-            "description": "目标过滤",
+            "description": "=== 群聊过滤 ===",
             "hint": ""
         },
         "_storage_section": {
-            "description": "存储管理",
+            "description": "=== 存储及进阶管理 ===",
             "hint": ""
         },
         "steal_meme": {
@@ -43,7 +43,7 @@
         },
         "auto_send_meme": {
             "description": "自动随聊发送表情包",
-            "hint": "开启后 Bot 会在聊天中自动发送表情包。关闭后仅收集不入库，或仅通过指令手动发送。"
+            "hint": "开启后 Bot 会在聊天中根据语境和发送概率主动搭配表情，无需用户要求。LLM 也可通过表情工具主动回应。"
         },
         "auto_meme_cancel_on_new_message": {
             "description": "新消息取消待发送表情",
@@ -55,27 +55,27 @@
         },
         "send_meme_as_qq_sticker": {
             "description": "以 QQ 表情包形式发送",
-            "hint": "开启后在 QQ 中按自定义表情包展示；关闭后按普通图片发送。仅对 aiocqhttp/NapCat 生效。"
+            "hint": "开启后在 QQ 中按自定义表情包展示；关闭后按普通图片发送。仅对 QQ（aiocqhttp/NapCat）生效，与图片是否转换为 GIF 独立。"
         },
         "send_meme_as_gif": {
             "description": "以 GIF 格式发送",
-            "hint": "开启后始终以 GIF 输出；QQ 展示形式由「以 QQ 表情包形式发送」控制。关闭时按原文件格式发送。"
+            "hint": "开启后始终以 GIF 输出。QQ 中是否按表情包展示由「以 QQ 表情包形式发送」控制。关闭时按原文件格式发送（png/jpg/gif 等）。开启后高频发送大图/动图场景会有较高瞬时内存占用。"
         },
         "meme_send_delay": {
-            "description": "固定延迟（秒）",
-            "hint": "等待此时间后发送表情包，避免与分段插件冲突。建议 5.0 秒以上，让分段先发完。设为 0 则立即发送。"
+            "description": "回复后的等待时间（秒）",
+            "hint": "默认等待 5 秒后发表情。高级选项中的秒/字大于 0 时优先按字数计算。新消息可取消尚未发出的表情。"
         },
         "smart_meme_selection": {
             "description": "智能表情包选择",
             "hint": "开启后使用综合评分（多样性 + 匹配度 + 相似度）选出最合适的表情包。关闭则随机选择（仍会避免短期重复）。"
         },
         "enable_natural_emotion_analysis": {
-            "description": "智能提取检索词",
-            "hint": "开启后用轻量模型从 AI 回复中提取检索词和情绪先验，增强表情包匹配；是否发送仍由概率/冷却等原有门控决定。关闭后直接用 AI 回复原文检索。"
+            "description": "用模型理解对话语境",
+            "hint": "开启后根据你的回复与用户消息提取表情包使用场景；留空模型时跟随当前会话。会增加模型调用。关闭后使用本地匹配。"
         },
         "emotion_analysis_provider_id": {
-            "description": "情绪分析专用模型",
-            "hint": "留空则使用当前会话模型。小参数量模型即可胜任，建议使用轻量免费模型以降低延迟和消耗。"
+            "description": "语境理解模型（可留空）",
+            "hint": "留空使用当前会话模型。可选择响应快的文本模型；高级设置中的 JEV 可替代这一步。"
         },
         "vision_provider_id": {
             "description": "视觉模型",
@@ -106,8 +106,8 @@
             "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。"
         },
         "max_reg_num": {
-            "description": "最大表情包数量",
-            "hint": "表情包存储上限。达到上限后自动按清理策略淘汰旧表情包。"
+            "description": "通用表情库自动淘汰上限",
+            "hint": "仅计算通用库中未收藏、未指定角色的普通表情；收藏、角色表情及受保护外部导入不占额度。超限按使用次数和入库时间加权淘汰。"
         },
         "steal_pool_capacity": {
             "description": "待审核池容量上限",
@@ -118,60 +118,60 @@
             "hint": "开启后自动偷取的图片进入「待审核池」，需在 WebUI 审核区人工通过后才正式入库。关闭后跳过审核，自动偷取的图片直接入库分类，请配合内容审核开关使用以避免低质量图片污染图库。"
         },
         "enable_embedding_search": {
-            "description": "启用嵌入向量检索",
+            "description": "启用语义检索（可选）",
             "hint": "开启后用远程文本嵌入按语义召回（图上文字 + 使用场景 + 描述）。关闭则只用关键词（BM25）。不使用本地 CLIP。未配置嵌入模型时自动降级为 BM25。"
         },
         "embedding_provider_id": {
-            "description": "嵌入模型 ID",
-            "hint": "用于生成表情包语义向量的嵌入模型。留空则自动使用 AstrBot 首个可用的 Embedding Provider。在 AstrBot 管理后台 → LLM 配置中可查看已配置的 Embedding 模型 ID（通常以 _embedding 结尾，如 openai_embedding、qwen_embedding 等）。此字段填写的是 Embedding 模型 ID，不是聊天模型或视觉模型 ID。"
+            "description": "语义检索模型",
+            "hint": "选择 AstrBot 中已配置的 Embedding 模型；留空使用首个可用模型。向量未就绪时继续使用本地匹配。"
         },
         "_smart_section": {
-            "description": "智能选择：文字距离融合权重预设",
+            "description": "=== 智能选择：文字距离融合权重预设 ===",
             "hint": ""
         },
         "_external_source_section": {
-            "description": "外部表情包源",
+            "description": "=== 外部表情包源（v3） ===",
             "hint": ""
         },
         "external_sources_enabled": {
             "description": "启用外部表情包源",
-            "hint": "支持 Meme Manager / AstrBot Meme Pack、GitHub 资源包仓库和受限 JSON API。导入内容会复制到本插件目录。"
+            "hint": "允许从 Meme Manager / AstrBot Meme Pack、GitHub 资源包仓库和外部 JSON API 预检并导入。所有图片都会复制进本插件目录，外部插件原文件不会被修改。"
         },
         "external_source_allow_http": {
             "description": "允许明文 HTTP 外部源",
-            "hint": "默认仅允许 HTTPS。回环、内网、链路本地和保留地址始终受到拦截。"
+            "hint": "默认仅允许 HTTPS，并阻止回环、内网、链路本地和保留地址。仅在完全可信的隔离网络中开启。"
         },
         "external_source_default_review": {
             "description": "外部导入默认进入待审核池",
-            "hint": "启用内容审核时，外部导入也会自动进入待审核池。"
+            "hint": "开启后，外部源图片先进入待审核区；关闭时经格式、体积和像素校验后直接入库。导入界面可逐次覆盖此设置。"
         },
         "external_source_max_items": {
             "description": "单个外部源最大图片数",
-            "hint": "默认 2000。"
+            "hint": "预检和单次同步最多处理的图片数量，防止超大资源包拖垮实例。"
         },
         "external_source_max_image_bytes": {
             "description": "外部单图字节上限",
-            "hint": "默认 32 MiB。"
+            "hint": "默认 32 MiB。下载和解包都会在写入前强制检查。"
         },
         "external_source_max_archive_bytes": {
             "description": "资源包压缩体积上限",
-            "hint": "默认 1 GiB。"
+            "hint": "默认 1 GiB，兼容 Meme Manager 大型资源包。"
         },
         "external_source_max_uncompressed_bytes": {
             "description": "资源包解压体积上限",
-            "hint": "默认 4 GiB。"
+            "hint": "默认 4 GiB；预检会累计 ZIP 成员声明大小并拦截压缩炸弹。"
         },
         "external_source_max_pixels": {
             "description": "外部单图最大像素数",
-            "hint": "默认 4000 万像素。"
+            "hint": "宽乘高的上限，默认 4000 万像素。"
         },
         "_webui_section": {
-            "description": "WebUI",
+            "description": "=== WebUI ===",
             "hint": ""
         },
         "webui_theme": {
             "description": "WebUI 默认主题",
-            "hint": "打开「表情管理」时使用的主题。在页面里切换也会记住上次选择，优先于这项。"
+            "hint": "页面尚未保存主题选择时使用该默认值；在「表情管理」中切换后，将持续使用页面保存的主题。"
         },
         "_advanced_section": {
             "description": "高级配置",
@@ -187,11 +187,19 @@
         },
         "emotion_analysis_prompt": {
             "description": "情绪分析提示词",
-            "hint": "生成检索词和 1~3 个情绪先验。支持占位符：{emotion_list}、{llm_reply}、{user_message}。为空时使用默认提示词。兼容旧的单分类名输出。"
+            "hint": "留空使用内置语境提示词。query 会保留助手的立场、互动意图和关键台词；自定义内容继续生效。"
         },
         "sim_weight_preset": {
-            "description": "文字距离融合预设",
+            "description": "本地文字匹配风格",
             "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。"
+        },
+        "show_advanced_settings": {
+            "description": "显示高级选项",
+            "hint": "展开群聊名单、模型提示词、外部源限制及匹配调优。关闭仅收起界面，已有设置继续生效。"
+        },
+        "meme_send_char_delay": {
+            "description": "按字数计算延迟（秒/字）",
+            "hint": "0 使用上方固定延迟；大于 0 时按回复长度计算。保留已有自定义值。"
         }
     },
     "pages": {
@@ -232,7 +240,7 @@
                 "paused_hint": "偷取已暂停，审核后自动恢复。"
             },
             "search": {
-                "library": "搜索表情包...",
+                "library": "台词、标签、文件名；多个词用空格分隔",
                 "pending": "搜索待审核表情包..."
             },
             "sort": {
@@ -298,7 +306,7 @@
             },
             "empty": {
                 "library_title": "暂无表情包",
-                "library_hint": "点击“添加”上传新的表情包。",
+                "library_hint": "先上传并分析图片，或到待审核区通过已收集的表情。只有正式图库的表情会参与发送。",
                 "pending_title": "暂无待审核表情包",
                 "pending_hint": "新偷取的表情包会出现在这里等待审核。",
                 "no_categories": "暂无分类",
@@ -386,10 +394,10 @@
                 "hash": "哈希"
             },
             "placeholders": {
-                "edit_scene": "例如: 算了, 躺平",
+                "edit_scene": "例如：又要加班了、你能帮帮我吗",
                 "edit_tags": "例如: 可爱, 搞怪, 稀有",
                 "select_category": "请选择分类...",
-                "upload_scene": "例如: 算了, 躺平",
+                "upload_scene": "填写对方可能说的话，例如：又要加班了",
                 "upload_tags": "例如: 可爱, 搞怪",
                 "upload_desc": "关于此表情包的描述...",
                 "category_key": "标识 (如: happy)",
@@ -571,6 +579,23 @@
                 "character": "角色保护",
                 "protected": "独立保留",
                 "automatic": "参与自动淘汰"
+            },
+            "guide": {
+                "title": "开始使用 · 让表情接上你的话",
+                "collect": "准备图库",
+                "collect_hint": "上传图片并分析，或在插件配置中开启收集、选择视觉模型。",
+                "review": "确认内容",
+                "review_hint": "在待审核区通过图片；检查图上文字和“适合回应”的句子，再分配角色。",
+                "chat": "正常聊天",
+                "chat_hint": "Bot 在聊天中结合语境主动表达情绪、接梗和回应，无需点名要求发表情；遇到不合适的候选就跳过。",
+                "pending_hint": "待审核图片不会参与发送。图片已入库但仍选不准时，可预览重新分析，再确认写回。",
+                "upload": "上传并分析",
+                "pending": "去审核",
+                "auto": "自动发送",
+                "on": "开启",
+                "off": "关闭",
+                "context": "语境理解",
+                "embedding": "语义检索"
             }
         }
     }

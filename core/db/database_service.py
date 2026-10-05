@@ -8,10 +8,10 @@
 """
 
 import asyncio
-import hashlib
 import json
 import sqlite3
 import time
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -41,11 +41,7 @@ class DatabaseService(
     _RELATED_FETCH_CHUNK_SIZE = 400
 
     # 表结构版本，用于迁移检测
-    # Keep the historical schema version stable for existing integrations.
-    # External-source tables are tracked independently through
-    # ``external_schema_version`` so v2 databases migrate without changing the
-    # value older tooling expects.
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
     EXTERNAL_SCHEMA_VERSION = 1
 
     def __init__(self, db_path: str | Path | None = None):
@@ -67,6 +63,9 @@ class DatabaseService(
 
         # 异步锁，保护并发写入
         self._write_lock = asyncio.Lock()
+        self._snapshot_lock = threading.RLock()
+        self._snapshot_revision: str | None = None
+        self._snapshot: dict[str, Any] = {}
 
     def _ensure_db_dir(self) -> None:
         """确保数据库目录存在。"""
@@ -379,39 +378,6 @@ class DatabaseService(
             )
         return search_metadata_changed
 
-    def _build_search_signature_from_index(self, idx: dict[str, dict[str, Any]]) -> str:
-        if not idx:
-            return "empty"
-
-        hasher = hashlib.sha256()
-        for path in sorted(idx.keys()):
-            data = idx.get(path)
-            if not isinstance(data, dict):
-                continue
-
-            category = str(data.get("category", "") or "")
-            desc = str(data.get("desc", "") or "")
-            overlay = str(data.get("overlay_text", "") or "")
-            tags = self._normalize_multi_value(data.get("tags", []))
-            scenes = self._normalize_multi_value(data.get("scenes", []))
-            emotions = self._normalize_multi_value(data.get("emotions", []))
-            payload = "\x1f".join(
-                [
-                    path,
-                    category,
-                    desc,
-                    overlay,
-                    "\x1e".join(tags),
-                    "\x1e".join(scenes),
-                    "\x1e".join(emotions),
-                ]
-            )
-            hasher.update(payload.encode("utf-8", errors="ignore"))
-            hasher.update(b"\x00")
-        return hasher.hexdigest()
-
-    # ── 基础 CRUD 操作 ──
-
     def get_emoji(self, path: str) -> dict[str, Any] | None:
         """获取单个表情包的完整信息。"""
         with self._get_connection() as conn:
@@ -621,11 +587,12 @@ class DatabaseService(
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 transaction_started = True
-                row = conn.execute("SELECT 1 FROM emoji WHERE path = ?", (path,)).fetchone()
+                row = conn.execute("SELECT * FROM emoji WHERE path = ?", (path,)).fetchone()
                 if not row:
                     conn.execute("ROLLBACK")
                     return False
 
+                scalar_updates = {key: value for key, value in scalar_updates.items() if row[key] != value}
                 if scalar_updates:
                     clauses = ", ".join(f"{field} = ?" for field in scalar_updates)
                     values = list(scalar_updates.values()) + [path]
@@ -633,21 +600,15 @@ class DatabaseService(
 
                 if "tags" in updates:
                     tags = self._normalize_multi_value(updates.get("tags"))
-                    conn.execute("DELETE FROM emoji_tag WHERE path = ?", (path,))
-                    for tag in tags:
-                        conn.execute(
-                            "INSERT OR IGNORE INTO emoji_tag (path, tag) VALUES (?, ?)",
-                            (path, tag),
-                        )
+                    current_tags = self._load_related_map(conn, table="emoji_tag", value_column="tag", paths=[path])
+                    self._replace_related_values_sync(conn, table="emoji_tag", value_column="tag", path=path,
+                                                     current_values=current_tags.get(path, []), desired_values=tags)
 
                 if "scenes" in updates:
                     scenes = self._normalize_multi_value(updates.get("scenes"))
-                    conn.execute("DELETE FROM emoji_scene WHERE path = ?", (path,))
-                    for scene in scenes:
-                        conn.execute(
-                            "INSERT OR IGNORE INTO emoji_scene (path, scene) VALUES (?, ?)",
-                            (path, scene),
-                        )
+                    current_scenes = self._load_related_map(conn, table="emoji_scene", value_column="scene", paths=[path])
+                    self._replace_related_values_sync(conn, table="emoji_scene", value_column="scene", path=path,
+                                                     current_values=current_scenes.get(path, []), desired_values=scenes)
 
                 conn.execute("COMMIT")
                 return True
@@ -818,36 +779,51 @@ class DatabaseService(
     # ── 兼容旧接口 ──
 
     def get_index_cache_readonly(self) -> dict[str, Any]:
-        """获取完整索引（兼容旧接口，用于迁移过渡）。
+        """返回可独立修改的完整快照；同一 revision 只从 SQLite 加载一次。"""
+        return self.get_search_snapshot()[0]
 
-        注意：此方法返回全量数据，仅用于兼容过渡，
-        新代码应使用具体的搜索方法。
-        """
+    def get_search_snapshot(self) -> tuple[dict[str, Any], str]:
+        """Metadata and corpus version from the same SQLite read transaction."""
+        with self._snapshot_lock, self._get_connection() as conn:
+            conn.execute("BEGIN")
+            versions = {row["key"]: row["value"] for row in conn.execute(
+                "SELECT key, value FROM meta WHERE key IN ('library_revision', 'corpus_id', 'corpus_revision')"
+            )}
+            revision = versions["library_revision"]
+            if revision != self._snapshot_revision:
+                self._snapshot = self._read_index(conn)
+                self._snapshot_revision = revision
+            snapshot = {
+                path: {key: value.copy() if isinstance(value, list) else value for key, value in entry.items()}
+                for path, entry in self._snapshot.items()
+            }
+            return snapshot, f"{versions['corpus_id']}:{versions['corpus_revision']}"
+
+    def _read_index(self, conn: sqlite3.Connection, paths: list[str] | None = None) -> dict[str, Any]:
+        """Hydrate a coherent snapshot or a bounded set of submitted paths."""
         result: dict[str, Any] = {}
-
-        with self._get_connection() as conn:
-            # 单次查询获取所有表情包
+        if paths is None:
             rows = conn.execute("SELECT * FROM emoji").fetchall()
-            if not rows:
-                return result
-
-            paths = [r["path"] for r in rows]
-            tags_map = self._load_related_map(
-                conn, table="emoji_tag", value_column="tag", paths=paths
-            )
-            scenes_map = self._load_related_map(
-                conn, table="emoji_scene", value_column="scene", paths=paths
-            )
-
-            # 构建结果
-            for row in rows:
-                path = row["path"]
-                entry = dict(row)
-                entry["tags"] = tags_map.get(path, [])
-                entry["scenes"] = scenes_map.get(path, [])
-                result[path] = self._hydrate_entry(entry)
-
+        else:
+            rows = []
+            for start in range(0, len(paths), self._RELATED_FETCH_CHUNK_SIZE):
+                batch = paths[start:start + self._RELATED_FETCH_CHUNK_SIZE]
+                placeholders = ",".join("?" for _ in batch)
+                rows.extend(conn.execute(f"SELECT * FROM emoji WHERE path IN ({placeholders})", batch).fetchall())
+        found = [row["path"] for row in rows]
+        tags = self._load_related_map(conn, table="emoji_tag", value_column="tag", paths=found)
+        scenes = self._load_related_map(conn, table="emoji_scene", value_column="scene", paths=found)
+        for row in rows:
+            entry = dict(row)
+            entry["tags"] = tags.get(row["path"], [])
+            entry["scenes"] = scenes.get(row["path"], [])
+            result[row["path"]] = self._hydrate_entry(entry)
         return result
+
+    def get_entries(self, paths: list[str]) -> dict[str, Any]:
+        with self._get_connection() as conn:
+            conn.execute("BEGIN")
+            return self._read_index(conn, list(dict.fromkeys(paths)))
 
     async def save_index(self, idx: dict[str, Any]) -> None:
         """保存索引（兼容旧接口，用于迁移过渡）。
@@ -893,29 +869,7 @@ class DatabaseService(
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 transaction_started = True
-                current_rows = conn.execute("SELECT * FROM emoji").fetchall()
-                current_index: dict[str, dict[str, Any]] = {
-                    row["path"]: dict(row) for row in current_rows
-                }
-                current_paths = list(current_index.keys())
-
-                if current_paths:
-                    tags_map = self._load_related_map(
-                        conn,
-                        table="emoji_tag",
-                        value_column="tag",
-                        paths=current_paths,
-                    )
-                    scenes_map = self._load_related_map(
-                        conn,
-                        table="emoji_scene",
-                        value_column="scene",
-                        paths=current_paths,
-                    )
-
-                    for path in current_paths:
-                        current_index[path]["tags"] = tags_map.get(path, [])
-                        current_index[path]["scenes"] = scenes_map.get(path, [])
+                current_index = self._read_index(conn, list(desired_index))
 
                 desired_paths = set(desired_index.keys())
                 existing_paths = set(current_index.keys())
@@ -1100,5 +1054,8 @@ class DatabaseService(
             return int(row["cnt"] if row else 0)
 
     def get_corpus_signature(self) -> str:
-        """获取语料库签名，用于 BM25 索引变更检测。"""
-        return self._build_search_signature_from_index(self.get_index_cache_readonly())
+        """O(1) committed semantic version; usage and favorites do not rebuild BM25."""
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT key, value FROM meta WHERE key IN ('corpus_id', 'corpus_revision')").fetchall()
+            values = {row["key"]: row["value"] for row in rows}
+            return f"{values['corpus_id']}:{values['corpus_revision']}"

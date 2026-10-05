@@ -26,7 +26,7 @@ class PHashDedupService:
         使用 difference hash (dHash) 算法：
         - 将图片缩放到 (PHASH_SIZE+1) x PHASH_SIZE 的灰度图
         - 比较相邻像素的亮度差异生成哈希位
-        - 对 GIF 动图取第一帧
+        - 动图仅使用 SHA256 去重，避免首帧相同的不同动画被丢弃
 
         Args:
             file_path: 图片文件路径
@@ -42,9 +42,8 @@ class PHashDedupService:
         def _sync_phash(fp: str) -> str:
             try:
                 with PILImage.open(fp) as im:
-                    # GIF 动图取第一帧
                     if getattr(im, "is_animated", False):
-                        im.seek(0)
+                        return ""
                     # 转灰度并缩放到 (size+1) x size
                     gray = im.convert("L").resize((size + 1, size), PILImage.BILINEAR)
                     pixels = list(gray.getdata())
@@ -87,6 +86,6 @@ class PHashDedupService:
             return 999
         try:
             xor = int(hash1, 16) ^ int(hash2, 16)
-            return bin(xor).count("1")
+            return xor.bit_count()
         except (ValueError, TypeError):
             return 999

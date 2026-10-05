@@ -287,32 +287,35 @@ class SourceRepository:
             )
 
     def _promote_source_pending_path_sync(self, pending_path: str, path: str) -> int:
-        updated = 0
         with self._get_connection() as conn:
-            rows = conn.execute(
-                "SELECT source_id, external_id, metadata_json "
-                "FROM meme_source_item WHERE path IS NULL"
-            ).fetchall()
-            for row in rows:
-                metadata = self._decode_json_object(row["metadata_json"])
-                if str(metadata.get("pending_path") or "") != pending_path:
-                    continue
-                metadata.pop("pending_path", None)
-                cur = conn.execute(
-                    """
-                    UPDATE meme_source_item
-                    SET path = ?, metadata_json = ?, last_seen_at = ?
-                    WHERE source_id = ? AND external_id = ?
-                    """,
-                    (
-                        path,
-                        json.dumps(metadata, ensure_ascii=False),
-                        int(time.time()),
-                        row["source_id"],
-                        row["external_id"],
-                    ),
-                )
-                updated += int(cur.rowcount or 0)
+            return self._promote_source_pending_in_connection(conn, pending_path, path)
+
+    def _promote_source_pending_in_connection(self, conn, pending_path: str, path: str) -> int:
+        updated = 0
+        rows = conn.execute(
+            "SELECT source_id, external_id, metadata_json "
+            "FROM meme_source_item WHERE path IS NULL"
+        ).fetchall()
+        for row in rows:
+            metadata = self._decode_json_object(row["metadata_json"])
+            if str(metadata.get("pending_path") or "") != pending_path:
+                continue
+            metadata.pop("pending_path", None)
+            cur = conn.execute(
+                """
+                UPDATE meme_source_item
+                SET path = ?, metadata_json = ?, last_seen_at = ?
+                WHERE source_id = ? AND external_id = ?
+                """,
+                (
+                    path,
+                    json.dumps(metadata, ensure_ascii=False),
+                    int(time.time()),
+                    row["source_id"],
+                    row["external_id"],
+                ),
+            )
+            updated += int(cur.rowcount or 0)
         return updated
 
     def count_external(self) -> int:

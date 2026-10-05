@@ -1,9 +1,6 @@
 """PendingRoutes methods for PluginAPI."""
 
-import asyncio
 import os
-import shutil
-import time
 from typing import Any
 
 from quart import jsonify, request
@@ -12,7 +9,7 @@ from astrbot.api import logger
 
 from ..core.util.blacklist import add_blacklist_hash
 from ..core.db.index_manager import refresh_search_entry
-from ..core.util.safe_io import safe_remove_file
+from ..core.util.safe_io import commit_image_file, safe_remove_file
 
 class PendingRoutes:
     # ── Pending (待审核池) ────────────────────────────────────
@@ -118,59 +115,17 @@ class PendingRoutes:
         cat_dir = self._cfg.ensure_category_dir(category)
         cat_path = str(cat_dir / os.path.basename(src_path))
 
-        moved = False
+        cat_path = str(self._unique_path(cat_dir, os.path.basename(src_path)))
         try:
-            if os.path.abspath(src_path) != os.path.abspath(cat_path):
-                await asyncio.to_thread(shutil.move, src_path, cat_path)
-            moved = True
-
-            emoji_entry: dict[str, Any] = {
-                "path": cat_path,
-                "hash": str(row.get("hash", "") or ""),
-                "phash": row.get("phash") or "",
-                "category": category,
-                "desc": str(row.get("desc", "") or ""),
-                "source": str(row.get("source", "") or ""),
-                "origin_target": str(row.get("origin_target", "") or ""),
-                "scope_mode": str(row.get("scope_mode", "public") or "public"),
-                "created_at": int(time.time()),
-                "use_count": 0,
-                "last_used_at": 0,
-                "reviewed_at": int(time.time()),
-                "tags": list(row.get("tags", []) or []),
-                "scenes": list(row.get("scenes", []) or []),
-                "overlay_text": str(row.get("overlay_text", "") or ""),
-                "emotions": list(row.get("emotions", []) or []),
-                "character": str(row.get("character", "") or ""),
-                # v5：从 pending 继承元数据（宽高/格式/字节/来源/入库方式）
-                "source_url": row.get("source_url"),
-                "original_name": row.get("original_name"),
-                "width": row.get("width"),
-                "height": row.get("height"),
-                "format": row.get("format"),
-                "bytes": row.get("bytes"),
-                "add_method": row.get("add_method"),
-                "retention_class": str(row.get("retention_class", "native") or "native"),
-            }
-            inserted = await db.insert_batch([emoji_entry])
-            if not inserted:
-                raise RuntimeError("insert emoji returned 0")
-            if hasattr(db, "promote_source_pending_path"):
-                await db.promote_source_pending_path(src_path, cat_path)
-            db.delete_pending(pending_id)
-
-            await refresh_search_entry(self.plugin, cat_path, emoji_entry)
-
+            async def commit_approval(_target):
+                if not await db.approve_pending(pending_id, cat_path, category):
+                    raise RuntimeError("pending metadata promotion failed")
+            await commit_image_file(src_path, cat_path, commit_approval)
+            await refresh_search_entry(self.plugin, cat_path)
             return True, ""
-        except Exception as e:
-            # 回滚：把文件移回 pending 路径，保留 pending 行
-            if moved and os.path.isfile(cat_path):
-                try:
-                    await asyncio.to_thread(shutil.move, cat_path, src_path)
-                except Exception as rb:
-                    logger.warning(f"审核回滚移动文件失败: {rb}")
-            logger.error(f"审核通过失败 id={pending_id}: {e}", exc_info=True)
-            return False, str(e)
+        except Exception as exc:
+            logger.error(f"pending approval failed id={pending_id}: {exc}", exc_info=True)
+            return False, str(exc)
 
     async def handle_pending_approve(self):
         """POST /pending/approve —— 批量通过 {id} 或 {ids:[]}。"""

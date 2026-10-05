@@ -246,7 +246,7 @@ class PreviewState:
                     " ".join(str(s) for s in item.get("scenes") or []),
                 ]
             ).lower()
-            if q not in haystack:
+            if not all(term in haystack for term in q.split(maxsplit=7)):
                 return False
         return True
 
@@ -340,7 +340,8 @@ class PreviewServer:
         r.add_get("/mock/bridge.js", self.handle_bridge_js)
         r.add_get("/logo.png", self.handle_logo)
         r.add_get("/vaultboy.png", self.handle_vaultboy)
-        for filename in ("app.js", "app.css", "template.js"):
+        for filename in ("app.js", "app.css", "template.js", "image_preview_client.js",
+                         "source_actions.js", "source_labels.js"):
             r.add_get("/" + filename, self._make_static_handler(filename))
         r.add_get("/vendor/{filename}", self._make_vendor_handler)
         r.add_route("*", PLUGIN_BASE + "/{endpoint:.+}", self.handle_api)
@@ -449,7 +450,9 @@ class PreviewServer:
     # ── GET handlers ──────────────────────────────────────────
 
     def api_health(self, request, payload):
-        return {"success": True, "status": "ok", "service": "emoji-manager-webui-mock"}
+        return {"success": True, "status": "ok", "service": "emoji-manager-webui-mock",
+                "setup": {"capture_enabled": True, "auto_send_enabled": True,
+                          "context_enabled": True, "embedding_enabled": False}}
 
     def api_prefs(self, request, payload):
         valid_themes = {"auto", "dark", "light", "minecraft", "fallout"}

@@ -317,10 +317,6 @@ class MemeStealToolWorkflow:
                 ),
                 timeout=self.IMAGE_PROCESSING_TIMEOUT_SECONDS,
             )
-            if idx is None and updated_idx is not None and not to_pending:
-                full_idx = await self.index_manager.load_index()
-                full_idx.update(updated_idx)
-                return success, full_idx
             return success, updated_idx
         except asyncio.TimeoutError:
             logger.warning(f"图片处理超时: {file_path}")

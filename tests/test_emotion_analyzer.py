@@ -73,7 +73,7 @@ class TestTemplateLoading:
             llm_reply="又被安排加班了",
             user_message="今天好累",
         )
-        assert '{"query": "摸鱼 下班 辛苦了"' in prompt
+        assert '{"query":"安慰加班 辛苦了早点休息"' in prompt
         assert "{emotion_list}" not in prompt
         assert "{llm_reply}" not in prompt
         assert "{user_message}" not in prompt
@@ -91,7 +91,7 @@ class TestTemplateLoading:
             llm_reply="又被安排加班了",
             user_message="今天好累",
         )
-        assert '{"query": "摸鱼 下班 辛苦了"' in prompt
+        assert '{"query":"安慰加班 辛苦了早点休息"' in prompt
         assert "又被安排加班了" in prompt
 
     def test_custom_template_is_loaded_and_stripped(self):
@@ -275,7 +275,7 @@ class TestAnalyzeEmotion(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsInstance(result, EmotionQuery)
         call = analyzer.plugin.context.llm_generate.await_args
-        self.assertIn('{"query": "摸鱼 下班 辛苦了"', call.kwargs["prompt"])
+        self.assertIn('{"query":"安慰加班 辛苦了早点休息"', call.kwargs["prompt"])
 
 
 class TestReplyAnalysis(unittest.IsolatedAsyncioTestCase):

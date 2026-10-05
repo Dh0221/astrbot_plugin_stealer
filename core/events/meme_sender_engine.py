@@ -176,22 +176,16 @@ class MemeSenderEngine:
         for pattern in skip_patterns:
             if re.search(pattern, text, re.IGNORECASE):
                 return True
-        serious_keywords = (
-            "抱歉",
-            "对不起",
-            "错误",
-            "失败",
-            "异常",
-            "无法",
-            "不能",
-            "隐私",
-            "安全",
-            "违规",
-            "风险",
-            "请提供",
-            "需要更多",
+        # 仅拦截明确的道歉、澄清和技术故障；一般否定词交由语境选图判断。
+        serious_patterns = (
+            r"^(?:很|非常|实在)?(?:抱歉|对不起)[，,。.!！\s]",
+            r"^(?:请提供|需要更多)(?:信息|详情|上下文|参数)",
+            r"(?:发生|出现|遇到)(?:了)?(?:错误|异常)",
+            r"(?:请求|连接|下载|上传|调用|执行|验证|认证)(?:发生)?(?:失败|错误|异常)",
+            r"(?:无法|不能)(?:完成|执行|访问|连接|处理|读取|提供)",
+            r"\b(?:traceback|exception|error\s*[:：]|http\s*[45]\d\d)\b",
         )
-        if any(keyword in normalized for keyword in serious_keywords):
+        if any(re.search(pattern, normalized, re.IGNORECASE) for pattern in serious_patterns):
             return True
         question_marks = normalized.count("?") + normalized.count("？")
         if question_marks >= 2:

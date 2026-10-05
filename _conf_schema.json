@@ -22,7 +22,10 @@
       "概率模式",
       "冷却模式"
     ],
-    "hint": "概率模式：每次收到图片时按设定概率决定是否偷取。冷却模式：两次偷取之间必须间隔指定秒数。"
+    "hint": "概率模式：每次收到图片时按设定概率决定是否偷取。冷却模式：两次偷取之间必须间隔指定秒数。",
+    "condition": {
+      "steal_meme": true
+    }
   },
   "steal_chance": {
     "description": "偷图概率",
@@ -33,7 +36,11 @@
       "max": 1.0,
       "step": 0.1
     },
-    "hint": "设为 0 时从不偷取，设为 1 时每次都偷取。建议 0.2~0.5。仅概率模式生效。"
+    "hint": "设为 0 时从不偷取，设为 1 时每次都偷取。建议 0.2~0.5。仅概率模式生效。",
+    "condition": {
+      "steal_meme": true,
+      "steal_mode": "probability"
+    }
   },
   "content_filtration": {
     "description": "内容审核",
@@ -50,13 +57,19 @@
       "max": 2000,
       "step": 10
     },
-    "hint": "自动偷取的图片先进「待审核池」。达到此数量后暂停自动偷取，待人工在 WebUI 审核区处理（通过入库或删除）腾出空间后自动恢复。调整后即时生效，无需重启。"
+    "hint": "自动偷取的图片先进「待审核池」。达到此数量后暂停自动偷取，待人工在 WebUI 审核区处理（通过入库或删除）腾出空间后自动恢复。调整后即时生效，无需重启。",
+    "condition": {
+      "steal_meme": true
+    }
   },
   "audit_required": {
     "description": "自动偷取需人工审核",
     "type": "bool",
     "default": true,
-    "hint": "开启后自动偷取的图片进入「待审核池」，需在 WebUI 审核区人工通过后才正式入库。关闭后跳过审核，自动偷取的图片直接入库分类，请配合内容审核开关使用以避免低质量图片污染图库。"
+    "hint": "开启后自动偷取的图片进入「待审核池」，需在 WebUI 审核区人工通过后才正式入库。关闭后跳过审核，自动偷取的图片直接入库分类，请配合内容审核开关使用以避免低质量图片污染图库。",
+    "condition": {
+      "steal_meme": true
+    }
   },
   "qqofficial_steal_mode": {
     "description": "表情收录模式（QQ_Official）",
@@ -72,7 +85,10 @@
       "仅收录表情 CDN 特征",
       "仅收录 GIF 格式"
     ],
-    "hint": "QQ_Official 平台的大表情/表情包是普通图片附件，无 OneBot 的 sub_type 标记。默认仅收录带表情 CDN 特征的图片（如商城表情）；可选全部收录，或仅收录 GIF。"
+    "hint": "QQ_Official 平台的大表情/表情包是普通图片附件，无 OneBot 的 sub_type 标记。默认仅收录带表情 CDN 特征的图片（如商城表情）；可选全部收录，或仅收录 GIF。",
+    "condition": {
+      "steal_meme": true
+    }
   },
   "_send_section": {
     "description": "=== 发送设置 ===",
@@ -83,13 +99,23 @@
     "description": "自动随聊发送表情包",
     "type": "bool",
     "default": true,
-    "hint": "开启后 Bot 会在聊天中自动发送表情包。"
+    "hint": "开启后 Bot 会在聊天中根据语境和发送概率主动搭配表情，无需用户要求。LLM 也可通过表情工具主动回应。"
+  },
+  "show_advanced_settings": {
+    "description": "显示高级选项",
+    "type": "bool",
+    "default": false,
+    "hint": "展开群聊名单、模型提示词、外部源限制及匹配调优。关闭仅收起界面，已有设置继续生效。"
   },
   "auto_meme_cancel_on_new_message": {
     "description": "新消息取消待发送表情",
     "type": "bool",
     "default": true,
-    "hint": "开启后同一会话有新消息到达时，会取消上一轮仍在延迟等待中的自动表情，避免旧回复配新图。"
+    "hint": "开启后同一会话有新消息到达时，会取消上一轮仍在延迟等待中的自动表情，避免旧回复配新图。",
+    "condition": {
+      "show_advanced_settings": true,
+      "auto_send_meme": true
+    }
   },
   "meme_chance": {
     "description": "表情包发送概率",
@@ -100,7 +126,10 @@
       "max": 1.0,
       "step": 0.1
     },
-    "hint": "设为 0 时从不发送，设为 1 时每次都发送。建议 0.1~0.3，避免刷屏。"
+    "hint": "设为 0 时从不发送，设为 1 时每次都发送。建议 0.1~0.3，避免刷屏。",
+    "condition": {
+      "auto_send_meme": true
+    }
   },
   "send_meme_as_qq_sticker": {
     "description": "以 QQ 表情包形式发送",
@@ -112,19 +141,38 @@
     "description": "以 GIF 格式发送",
     "type": "bool",
     "default": false,
-    "hint": "开启后始终以 GIF 输出。QQ 中是否按表情包展示由「以 QQ 表情包形式发送」控制。关闭时按原文件格式发送（png/jpg/gif 等）。开启后高频发送大图/动图场景会有较高瞬时内存占用。"
+    "hint": "开启后始终以 GIF 输出。QQ 中是否按表情包展示由「以 QQ 表情包形式发送」控制。关闭时按原文件格式发送（png/jpg/gif 等）。开启后高频发送大图/动图场景会有较高瞬时内存占用。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "meme_send_delay": {
-    "description": "固定延迟（秒）",
+    "description": "回复后的等待时间（秒）",
     "type": "float",
     "default": 5.0,
-    "hint": "等待此时间后发送表情包，避免与分段插件冲突。建议 5.0 秒以上，让分段先发完。设为 0 则立即发送。"
+    "hint": "默认等待 5 秒后发表情。高级选项中的秒/字大于 0 时优先按字数计算。新消息可取消尚未发出的表情。",
+    "condition": {
+      "auto_send_meme": true
+    }
+  },
+  "meme_send_char_delay": {
+    "description": "按字数计算延迟（秒/字）",
+    "type": "float",
+    "default": 0.0,
+    "hint": "0 使用上方固定延迟；大于 0 时按回复长度计算。保留已有自定义值。",
+    "condition": {
+      "show_advanced_settings": true,
+      "auto_send_meme": true
+    }
   },
   "smart_meme_selection": {
     "description": "智能表情包选择",
     "type": "bool",
     "default": true,
-    "hint": "开启后使用综合评分（多样性 + 匹配度 + 相似度）选出最合适的表情包。关闭则随机选择（仍会避免短期重复）。"
+    "hint": "开启后使用综合评分（多样性 + 匹配度 + 相似度）选出最合适的表情包。关闭则随机选择（仍会避免短期重复）。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "_emotion_section": {
     "description": "=== 情绪识别 ===",
@@ -132,41 +180,62 @@
     "invisible": true
   },
   "enable_natural_emotion_analysis": {
-    "description": "启用小模型分析",
+    "description": "用模型理解对话语境",
     "type": "bool",
     "default": true,
-    "hint": "开启后启用模型辅助选图：未勾选 JEV 时使用下方传统 LLM 提取检索词和情绪先验；同时勾选 JEV 时使用官方 JEV 决策。关闭后直接用回复原文检索，JEV 开关也不生效。发送仍受概率和冷却等门控约束。"
+    "hint": "开启后根据你的回复与用户消息提取表情包使用场景；留空模型时跟随当前会话。会增加模型调用。关闭后使用本地匹配。",
+    "condition": {
+      "auto_send_meme": true
+    }
   },
   "emotion_analysis_provider_id": {
-    "description": "传统 LLM 分析模型",
+    "description": "语境理解模型（可留空）",
     "type": "string",
-    "hint": "留空则使用当前会话模型。小参数量模型即可胜任，建议使用轻量免费模型以降低延迟和消耗。",
+    "hint": "留空使用当前会话模型。可选择响应快的文本模型；高级设置中的 JEV 可替代这一步。",
     "_special": "select_provider",
-    "default": ""
+    "default": "",
+    "condition": {
+      "enable_natural_emotion_analysis": true
+    }
   },
   "emotion_analysis_prompt": {
     "description": "情绪分析提示词",
     "type": "text",
-    "default": "你是表情包检索词提取器。根据对话从 AI 回复中提取能搜到表情包的关键词或短句，并给出 1~3 个情绪先验。\n可选情绪分类：{emotion_list}\n\n任务：\n1. 只从回复里摘录关键词或短句，不要总结成抽象概念。\n2. 如果没有明显关键词，就用回复原文。\n3. emotions 从给定分类里选 1~3 个，按相关度排序。每个分类机会均等，不要把某一类当默认。\n\n用户消息：{user_message}\n回复：{llm_reply}\n\n输出示例：\n{\"query\": \"摸鱼 下班 辛苦了\", \"emotions\": [\"tired\", \"sigh\"]}\n",
-    "hint": "生成检索词和 1~3 个情绪先验。支持占位符：{emotion_list}、{llm_reply}、{user_message}。为空时使用默认提示词。兼容旧的单分类名输出。"
+    "default": "",
+    "hint": "留空使用内置语境提示词。query 会保留助手的立场、互动意图和关键台词；自定义内容继续生效。",
+    "condition": {
+      "show_advanced_settings": true,
+      "enable_natural_emotion_analysis": true
+    }
   },
   "enable_jev": {
     "description": "启用 JEV 选图",
     "type": "bool",
     "default": false,
-    "hint": "需同时开启“小模型分析”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。"
+    "hint": "需同时开启“小模型分析”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。",
+    "condition": {
+      "show_advanced_settings": true,
+      "enable_natural_emotion_analysis": true
+    }
   },
   "typesafe_api_key": {
     "description": "TypeSafe API Key",
     "type": "string",
     "default": "",
-    "hint": "在 console.typesafe.ai 创建。同时勾选“小模型分析”和“JEV 选图”后使用；留空时回退传统 LLM。"
+    "hint": "在 console.typesafe.ai 创建。同时勾选“小模型分析”和“JEV 选图”后使用；留空时回退传统 LLM。",
+    "condition": {
+      "enable_jev": true
+    }
   },
   "typesafe_api_base_url": {
     "description": "TypeSafe API Base URL",
     "type": "string",
     "default": "https://api.typesafe.ai",
-    "hint": "默认使用 TypeSafe 官方 API。通常只填写到域名；也兼容以 /v1 结尾或完整的 /v1/systemone 地址。API Key 会发送到此地址，请仅配置可信服务。"
+    "hint": "默认使用 TypeSafe 官方 API。通常只填写到域名；也兼容以 /v1 结尾或完整的 /v1/systemone 地址。API Key 会发送到此地址，请仅配置可信服务。",
+    "condition": {
+      "show_advanced_settings": true,
+      "enable_jev": true
+    }
   },
   "_model_section": {
     "description": "=== 模型配置 ===",
@@ -180,16 +249,19 @@
     "_special": "select_provider"
   },
   "enable_embedding_search": {
-    "description": "启用嵌入向量检索",
+    "description": "启用语义检索（可选）",
     "type": "bool",
     "default": false,
     "hint": "开启后用远程文本嵌入按语义召回（图上文字 + 使用场景 + 描述）。关闭则只用关键词（BM25）。不使用本地 CLIP。未配置嵌入模型时自动降级为 BM25。"
   },
   "embedding_provider_id": {
-    "description": "嵌入模型 ID",
+    "description": "语义检索模型",
     "type": "string",
     "default": "",
-    "hint": "用于生成表情包语义向量的嵌入模型。留空则自动使用 AstrBot 首个可用的 Embedding Provider。在 AstrBot 管理后台 → LLM 配置中可查看已配置的 Embedding 模型 ID（通常以 _embedding 结尾，如 openai_embedding、qwen_embedding 等）。此字段填写的是 Embedding 模型 ID，不是聊天模型或视觉模型 ID。"
+    "hint": "选择 AstrBot 中已配置的 Embedding 模型；留空使用首个可用模型。向量未就绪时继续使用本地匹配。",
+    "condition": {
+      "enable_embedding_search": true
+    }
   },
   "_group_section": {
     "description": "=== 群聊过滤 ===",
@@ -200,13 +272,19 @@
     "description": "发表情白名单",
     "type": "list",
     "default": [],
-    "hint": "格式：group:群号 或 user:QQ号。非空时仅白名单内的目标允许自动发送表情包。"
+    "hint": "格式：group:群号 或 user:QQ号。非空时仅白名单内的目标允许自动发送表情包。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "send_target_blacklist": {
     "description": "发表情黑名单",
     "type": "list",
     "default": [],
-    "hint": "格式：group:群号 或 user:QQ号。可与白名单同时生效，冲突时按下方优先级规则判定。"
+    "hint": "格式：group:群号 或 user:QQ号。可与白名单同时生效，冲突时按下方优先级规则判定。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "send_target_filter_mode": {
     "description": "发表情名单优先级",
@@ -220,19 +298,28 @@
       "白名单优先",
       "黑名单优先"
     ],
-    "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。"
+    "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "steal_target_whitelist": {
     "description": "偷表情白名单",
     "type": "list",
     "default": [],
-    "hint": "格式：group:群号 或 user:QQ号。非空时仅白名单内的目标允许自动偷取。"
+    "hint": "格式：group:群号 或 user:QQ号。非空时仅白名单内的目标允许自动偷取。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "steal_target_blacklist": {
     "description": "偷表情黑名单",
     "type": "list",
     "default": [],
-    "hint": "格式：group:群号 或 user:QQ号。可与白名单同时生效，冲突时按下方优先级规则判定。"
+    "hint": "格式：group:群号 或 user:QQ号。可与白名单同时生效，冲突时按下方优先级规则判定。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "steal_target_filter_mode": {
     "description": "偷表情名单优先级",
@@ -246,7 +333,10 @@
       "白名单优先",
       "黑名单优先"
     ],
-    "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。"
+    "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "_storage_section": {
     "description": "=== 存储及进阶管理 ===",
@@ -268,20 +358,33 @@
     "description": "淘汰评分：低使用次数权重",
     "type": "float",
     "default": 0.7,
-    "slider": {"min": 0, "max": 1, "step": 0.05},
-    "hint": "默认 0.7，入库时间权重为 1 减此值。两项归一化后加权，使用越少、入库越旧越优先淘汰；0 仅按最旧，1 仅按使用最少。"
+    "slider": {
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    "hint": "默认 0.7，入库时间权重为 1 减此值。两项归一化后加权，使用越少、入库越旧越优先淘汰；0 仅按最旧，1 仅按使用最少。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "custom_meme_classification_prompt": {
     "description": "VLM 分类提示词",
     "type": "text",
     "default": "<role>\n你是中文互联网表情包理解与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n每个分类机会均等，不要把某一类当默认。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
-    "hint": "支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。"
+    "hint": "支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "custom_meme_classification_with_filter_prompt": {
     "description": "VLM 分类提示词（带审核）",
     "type": "text",
     "default": "<role>\n你是中文互联网表情包审核与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<content_filter>\n先审核完整表情包。含裸露色情、暴力血腥、政治敏感或广告营销内容时，只输出：{\"approved\":false,\"reason\":\"审核不通过\"}\n通过审核后再执行下方标注任务。\n</content_filter>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n每个分类机会均等，不要把某一类当默认。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n审核通过时只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"approved\":true,\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n审核不通过时只输出前述 approved=false 对象。字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
-    "hint": "开启内容审核时使用的 VLM 分类提示词。支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。"
+    "hint": "开启内容审核时使用的 VLM 分类提示词。支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "_external_source_section": {
     "description": "=== 外部表情包源（v3） ===",
@@ -292,49 +395,80 @@
     "description": "启用外部表情包源",
     "type": "bool",
     "default": true,
-    "hint": "允许从 Meme Manager / AstrBot Meme Pack、GitHub 资源包仓库和外部 JSON API 预检并导入。所有图片都会复制进本插件目录，外部插件原文件不会被修改。"
+    "hint": "允许从 Meme Manager / AstrBot Meme Pack、GitHub 资源包仓库和外部 JSON API 预检并导入。所有图片都会复制进本插件目录，外部插件原文件不会被修改。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "external_source_allow_http": {
     "description": "允许明文 HTTP 外部源",
     "type": "bool",
     "default": false,
-    "hint": "默认仅允许 HTTPS，并阻止回环、内网、链路本地和保留地址。仅在完全可信的隔离网络中开启。"
+    "hint": "默认仅允许 HTTPS，并阻止回环、内网、链路本地和保留地址。仅在完全可信的隔离网络中开启。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_default_review": {
     "description": "外部导入默认进入待审核池",
     "type": "bool",
     "default": false,
-    "hint": "开启后，外部源图片先进入待审核区；关闭时经格式、体积和像素校验后直接入库。导入界面可逐次覆盖此设置。"
+    "hint": "开启后，外部源图片先进入待审核区；关闭时经格式、体积和像素校验后直接入库。导入界面可逐次覆盖此设置。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_max_items": {
     "description": "单个外部源最大图片数",
     "type": "int",
     "default": 2000,
-    "hint": "预检和单次同步最多处理的图片数量，防止超大资源包拖垮实例。"
+    "hint": "预检和单次同步最多处理的图片数量，防止超大资源包拖垮实例。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_max_image_bytes": {
     "description": "外部单图字节上限",
     "type": "int",
     "default": 33554432,
-    "hint": "默认 32 MiB。下载和解包都会在写入前强制检查。"
+    "hint": "默认 32 MiB。下载和解包都会在写入前强制检查。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_max_archive_bytes": {
     "description": "资源包压缩体积上限",
     "type": "int",
     "default": 1073741824,
-    "hint": "默认 1 GiB，兼容 Meme Manager 大型资源包。"
+    "hint": "默认 1 GiB，兼容 Meme Manager 大型资源包。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_max_uncompressed_bytes": {
     "description": "资源包解压体积上限",
     "type": "int",
     "default": 4294967296,
-    "hint": "默认 4 GiB；预检会累计 ZIP 成员声明大小并拦截压缩炸弹。"
+    "hint": "默认 4 GiB；预检会累计 ZIP 成员声明大小并拦截压缩炸弹。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "external_source_max_pixels": {
     "description": "外部单图最大像素数",
     "type": "int",
     "default": 40000000,
-    "hint": "宽乘高的上限，默认 4000 万像素。"
+    "hint": "宽乘高的上限，默认 4000 万像素。",
+    "condition": {
+      "show_advanced_settings": true,
+      "external_sources_enabled": true
+    }
   },
   "_webui_section": {
     "description": "=== WebUI ===",
@@ -367,7 +501,7 @@
     "invisible": true
   },
   "sim_weight_preset": {
-    "description": "文字距离融合预设",
+    "description": "本地文字匹配风格",
     "type": "string",
     "default": "balanced",
     "options": [
@@ -382,6 +516,9 @@
       "语义优先",
       "严格匹配"
     ],
-    "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。"
+    "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   }
 }

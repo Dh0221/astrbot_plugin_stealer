@@ -60,14 +60,14 @@
 
 ### 3. 开始使用
 
-```
+```text
 /meme on        # 开启偷图
 /meme auto_on   # 开启自动发送
 ```
 
 想暂停收集时：
 
-```
+```text
 /meme off       # 关闭偷图，已收集的表情包仍可使用
 ```
 
@@ -99,7 +99,7 @@
 
 推荐资源包结构：
 
-```
+```text
 pack/
 ├── manifest.json                 # 资源包信息
 ├── memes/<分类>/<图片>            # 必选图片目录
@@ -138,7 +138,8 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 
 所有公开配置项均可在 AstrBot 管理面板中修改。默认值与 `_conf_schema.json`、运行时配置保持一致。
 
-### 偷图设置
+<details open>
+<summary><strong>偷图设置</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -150,7 +151,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **自动偷取需人工审核** | `true` | 开启后先进入审核区；关闭后通过基础校验即可直接入库 |
 | **表情收录模式（QQ_Official）** | `cdn_only` | `all_images` 收录所有图片；`cdn_only` 仅收录表情 CDN 特征；`gif_only` 仅收录 GIF |
 
-### 发送设置
+</details>
+
+<details open>
+<summary><strong>发送设置</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -165,7 +169,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **最大随机延迟/秒** | `8.0` | 随机延迟上限 |
 | **智能表情包选择** | `true` | 使用综合评分选择表情包；关闭后随机选择但仍避免短期重复 |
 
-### 情绪识别
+</details>
+
+<details>
+<summary><strong>情绪识别</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -176,7 +183,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **TypeSafe API Base URL** | `https://api.typesafe.ai` | 默认使用官方 API；支持可信的兼容代理地址，API Key 会发送到该地址 |
 | **情绪分析提示词** | `""` | 留空使用内置模板，支持 `{emotion_list}`、`{llm_reply}` 和 `{user_message}` |
 
-### 模型配置
+</details>
+
+<details>
+<summary><strong>模型配置</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -184,7 +194,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **启用嵌入向量检索** | `false` | 开启后使用 FaissVecDB 做语义召回，不可用时自动降级 BM25 |
 | **嵌入模型 ID** | `""` | 留空自动使用 AstrBot 首个 Embedding Provider；填写 Embedding 模型 ID，不填聊天模型或视觉模型 ID |
 
-### 群聊过滤
+</details>
+
+<details>
+<summary><strong>群聊过滤</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -195,7 +208,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **偷表情黑名单** | `[]` | 可与白名单同时生效 |
 | **偷表情名单优先级** | `whitelist_first` | 可选 `whitelist_first` 或 `blacklist_first` |
 
-### 存储、提示词与智能选择
+</details>
+
+<details>
+<summary><strong>存储、提示词与智能选择</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -205,7 +221,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **VLM 分类提示词（带审核）** | `""` | 内容审核开启时使用，留空使用内置模板 |
 | **文字距离融合预设** | `balanced` | `balanced`、`keyword`、`semantic`、`strict`；控制智能选择的匹配权重 |
 
-### 外部表情包源
+</details>
+
+<details>
+<summary><strong>外部表情包源</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -215,11 +234,16 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 | **单个外部源最大图片数** | `2000` | 限制预检与单次同步规模 |
 | **单图 / 压缩包 / 解压后 / 像素上限** | `32 MiB / 1 GiB / 4 GiB / 4000 万` | 防止超大响应、压缩炸弹和超大图片 |
 
-### WebUI
+</details>
+
+<details>
+<summary><strong>WebUI</strong></summary>
 
 | 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
 | **WebUI 默认主题** | `auto` | 可选 `auto`、`dark`、`light`、`minecraft`、`fallout`；页面内选择会持久化 |
+
+</details>
 
 ## 🔄 情绪分析模式详解
 

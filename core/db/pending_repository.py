@@ -42,6 +42,7 @@ class PendingRepository:
     def _insert_pending_sync(self, meta: dict[str, Any]) -> int | None:
         created_at = int(meta.get("created_at") or int(time.time()))
         with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 cur = conn.execute(
                     f"""
@@ -87,10 +88,41 @@ class PendingRepository:
                         "INSERT OR IGNORE INTO emoji_pending_scene (path, scene) VALUES (?, ?)",
                         (path, scene),
                     )
+                conn.execute("COMMIT")
                 return int(cur.lastrowid) if cur.lastrowid else None
             except sqlite3.IntegrityError:
+                conn.execute("ROLLBACK")
                 # 仅作 pending 内去重：同路径已存在说明该图已在池中
                 return None
+
+    async def approve_pending(self, pending_id: int, path: str, category: str) -> bool:
+        """Promote metadata and source links in one transaction."""
+        async with self._write_lock:
+            return await asyncio.to_thread(self._approve_pending_sync, pending_id, path, category)
+
+    def _approve_pending_sync(self, pending_id: int, path: str, category: str) -> bool:
+        with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM emoji_pending WHERE id = ?", (pending_id,)).fetchone()
+            if row is None:
+                return False
+            if conn.execute("SELECT 1 FROM emoji WHERE path = ?", (path,)).fetchone():
+                raise sqlite3.IntegrityError("target metadata already exists")
+            meta = dict(row)
+            old_path = meta["path"]
+            now = int(time.time())
+            meta.update(category=category, reviewed_at=now)
+            conn.execute(self._INSERT_EMOJI_SQL, self._emoji_insert_values(path, meta, now=now))
+            for table, column in (("emoji_tag", "tag"), ("emoji_scene", "scene")):
+                conn.execute(
+                    f"INSERT INTO {table}(path, {column}) SELECT ?, {column} "
+                    f"FROM {table.replace('emoji_', 'emoji_pending_')} WHERE path = ?",
+                    (path, old_path),
+                )
+            self._promote_source_pending_in_connection(conn, old_path, path)
+            conn.execute("DELETE FROM emoji_pending WHERE id = ?", (pending_id,))
+            conn.execute("COMMIT")
+            return True
 
     def get_pending_paginated(
         self,

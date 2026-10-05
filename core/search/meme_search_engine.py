@@ -36,6 +36,8 @@ class MemeSearchEngine:
         self._bm25_doc_paths: list[str] = []
         self._bm25_dirty: bool = True
         self._bm25_signature: str = ""
+        self._bm25_epoch = 0
+        self._bm25_build_lock = asyncio.Lock()
         cache_dir = getattr(plugin_instance, "cache_dir", None)
         self._cache_path = Path(cache_dir) / "bm25_cache.json" if cache_dir else None
 
@@ -96,19 +98,33 @@ class MemeSearchEngine:
         return self._search_signature_from_index(idx)
 
     async def _build_bm25_index(self, idx: dict | None = None) -> None:
+        async with self._bm25_build_lock:
+            await self._build_bm25_index_locked(idx)
+
+    async def _build_bm25_index_locked(self, idx: dict | None = None) -> None:
         if BM25 is None:
             return
 
         # 优先使用数据库服务
         explicit_idx = idx is not None
+        epoch = self._bm25_epoch
+        signature = None
 
         if idx is None:
-            idx = self.get_index()
+            db = getattr(self.plugin, "db_service", None)
+            if db is not None and callable(getattr(db, "get_search_snapshot", None)):
+                idx, signature = await asyncio.to_thread(db.get_search_snapshot)
+            else:
+                idx = await asyncio.to_thread(self.get_index)
 
         if not idx:
+            self._bm25_index = None
+            self._bm25_doc_paths = []
+            self._bm25_signature = "empty"
+            self._bm25_dirty = epoch != self._bm25_epoch
             return
 
-        signature = self._compute_bm25_signature(idx, prefer_db_signature=not explicit_idx)
+        signature = signature or self._compute_bm25_signature(idx, prefer_db_signature=not explicit_idx)
 
         # 优先尝试从持久化缓存加载 BM25 文档语料。
         if self._cache_path and self._cache_path.is_file():
@@ -127,32 +143,22 @@ class MemeSearchEngine:
                             if isinstance(item, (list, tuple)):
                                 normalized_docs.append([str(tok) for tok in item if str(tok)])
                         if normalized_docs and len(normalized_docs) == len(cached_doc_paths):
-                            self._bm25_index = BM25(normalized_docs)
+                            self._bm25_index = await asyncio.to_thread(BM25, normalized_docs)
                             self._bm25_doc_paths = [str(p) for p in cached_doc_paths]
                             self._bm25_signature = signature
-                            self._bm25_dirty = False
+                            self._bm25_dirty = epoch != self._bm25_epoch
                             logger.debug(f"[BM25] 从缓存恢复索引: {len(normalized_docs)} 文档")
                             return
             except Exception as e:
                 logger.debug(f"[BM25] 读取缓存失败，改为重建: {e}")
 
-        documents: list[tuple[str, ...]] = []
-        doc_paths: list[str] = []
-
-        for file_path, data in idx.items():
-            if not isinstance(data, dict):
-                continue
-            text_content = build_meme_search_text(data, bm25=True)
-            tokens = tokenize_for_bm25(text_content)
-            if tokens:
-                documents.append(tokens)
-                doc_paths.append(file_path)
+        documents, doc_paths, index = await asyncio.to_thread(self._prepare_bm25, idx)
 
         if documents:
-            self._bm25_index = BM25(documents)
+            self._bm25_index = index
             self._bm25_doc_paths = doc_paths
             self._bm25_signature = signature
-            self._bm25_dirty = False
+            self._bm25_dirty = epoch != self._bm25_epoch
             logger.debug(f"[BM25] 索引构建完成: {len(documents)} 文档, 示例: {documents[:3]}")
 
             if self._cache_path:
@@ -169,6 +175,17 @@ class MemeSearchEngine:
                 except Exception as e:
                     logger.debug(f"[BM25] 持久化缓存失败: {e}")
 
+    @staticmethod
+    def _prepare_bm25(idx):
+        documents, paths = [], []
+        for path, data in idx.items():
+            if isinstance(data, dict):
+                tokens = tokenize_for_bm25(build_meme_search_text(data, bm25=True))
+                if tokens:
+                    documents.append(tokens)
+                    paths.append(path)
+        return documents, paths, BM25(documents) if documents else None
+
     def _save_bm25_cache(self, data: dict) -> None:
         """原子替换缓存文件，保留现有 JSON 格式供重启复用。"""
         path = self._cache_path
@@ -184,6 +201,7 @@ class MemeSearchEngine:
             Path(temporary).unlink(missing_ok=True)
 
     def _invalidate_bm25_index(self) -> None:
+        self._bm25_epoch += 1
         self._bm25_dirty = True
         self._bm25_index = None
         self._bm25_doc_paths = []

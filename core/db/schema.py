@@ -10,6 +10,7 @@ class DatabaseSchema:
     def _init_schema(self) -> None:
         """初始化数据库表结构。"""
         with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             # 创建元数据表（存储版本等信息）
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS meta (
@@ -63,6 +64,50 @@ class DatabaseSchema:
             # v3 external-source schema is additive and intentionally runs for
             # every database, including databases already at schema version 6.
             self._ensure_external_schema(conn)
+            self._ensure_search_revision_schema(conn)
+            conn.execute("COMMIT")
+
+    def _ensure_search_revision_schema(self, conn: sqlite3.Connection) -> None:
+        """v7: transactional revisions and a durable, coalescing vector refresh queue."""
+        for key in ("library_revision", "corpus_revision"):
+            conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES (?, '0')", (key,))
+        conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('corpus_id', hex(randomblob(16)))")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS search_refresh (
+                path TEXT PRIMARY KEY,
+                generation INTEGER NOT NULL DEFAULT 1,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                retry_at INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+        """)
+        for table in ("emoji", "emoji_tag", "emoji_scene"):
+            for operation in ("INSERT", "UPDATE", "DELETE"):
+                conn.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS revision_{table}_{operation.lower()}
+                    AFTER {operation} ON {table}
+                    BEGIN
+                        UPDATE meta SET value = CAST(value AS INTEGER) + 1
+                        WHERE key = 'library_revision';
+                    END
+                """)
+                when = ""
+                if table == "emoji" and operation == "UPDATE":
+                    fields = ("path", "category", "desc", "overlay_text", "emotions_json", "character")
+                    when = "WHEN " + " OR ".join(f"OLD.{field} IS NOT NEW.{field}" for field in fields)
+                path = "OLD.path" if operation == "DELETE" else "NEW.path"
+                conn.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS corpus_{table}_{operation.lower()}
+                    AFTER {operation} ON {table} {when}
+                    BEGIN
+                        UPDATE meta SET value = CAST(value AS INTEGER) + 1
+                        WHERE key = 'corpus_revision';
+                        INSERT INTO search_refresh(path) VALUES ({path})
+                        ON CONFLICT(path) DO UPDATE SET
+                            generation = generation + 1, attempts = 0,
+                            retry_at = 0, last_error = NULL;
+                    END
+                """)
 
     def _create_tables(self, conn: sqlite3.Connection) -> None:
         """创建所有数据表。"""

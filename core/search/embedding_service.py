@@ -7,6 +7,8 @@
 - 回填：启动时为已有 emoji 批量补算向量
 """
 
+import asyncio
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 
 from ..processing.semantic_schema import EMBEDDING_TEXT_VERSION, build_meme_search_text
 
@@ -42,12 +45,15 @@ class EmbeddingService:
         # FaissVecDB
         self._faiss_db: Any | None = None
         self._faiss_available: bool | None = None  # None=未检测
+        self._initialized_faiss = None
+        self._faiss_init_lock = asyncio.Lock()
 
         # numpy 降级
         self._fallback_matrix: np.ndarray | None = None
         self._fallback_paths: list[str] = []
         self._fallback_dim: int = 0
         self._fallback_loaded: bool = False
+        self._fallback_model_sig: str = ""
 
     # ═══════════════════════════════════════════════════
     #  Provider（对齐 livingmemory _initialize_providers）
@@ -85,10 +91,6 @@ class EmbeddingService:
         if self._provider is not None:
             return self._provider
 
-        # 负缓存：同一配置下已确认无 provider，直接返回避免重复日志
-        if self._provider_not_found:
-            return None
-
         provider_id = getattr(self.plugin, "embedding_provider_id", None) or ""
 
         # 1. 按 ID 查找（对齐 livingmemory _initialize_providers）
@@ -103,6 +105,9 @@ class EmbeddingService:
                 else:
                     self._provider = provider
                     self._provider_dim = self._get_provider_dim(provider)
+                    if self._provider_not_found:
+                        self._faiss_available = None
+                    self._provider_not_found = False
                     logger.info(
                         f"[Embedding] 使用指定 Provider: {provider_id} (dim={self._provider_dim})"
                     )
@@ -117,11 +122,15 @@ class EmbeddingService:
         if providers:
             self._provider = providers[0]
             self._provider_dim = self._get_provider_dim(self._provider)
+            if self._provider_not_found:
+                self._faiss_available = None
+            self._provider_not_found = False
             pid = self._extract_provider_id(self._provider)
             logger.info(f"[Embedding] 自动选择首个 Provider: {pid} (dim={self._provider_dim})")
             return self._provider
 
-        logger.info("[Embedding] 未找到 Embedding Provider，嵌入检索不可用")
+        if not self._provider_not_found:
+            logger.info("[Embedding] 未找到 Embedding Provider，嵌入检索不可用")
         self._provider_not_found = True
         return None
 
@@ -227,11 +236,26 @@ class EmbeddingService:
 
     def _resolve_data_dir(self) -> str:
         """解析插件数据目录。"""
-        if hasattr(self.plugin, "plugin_config"):
-            return str(self.plugin.plugin_config.data_dir)
-        if hasattr(self.plugin, "data_dir"):
-            return str(self.plugin.data_dir)
-        return "."
+        directory = getattr(getattr(self.plugin, "plugin_config", None), "data_dir", None)
+        directory = directory or getattr(self.plugin, "base_dir", None) or getattr(self.plugin, "data_dir", None)
+        path = Path(directory or StarTools.get_data_dir("astrbot_plugin_stealer"))
+        if not path.is_absolute():
+            raise ValueError("plugin data directory must be absolute")
+        return str(path.resolve())
+
+    def _fallback_signature(self, provider) -> str:
+        model = provider.get_model() if callable(getattr(provider, "get_model", None)) else ""
+        identity = [type(provider).__module__, type(provider).__qualname__,
+                    self._extract_provider_id(provider), model, self._get_provider_dim(provider), EMBEDDING_TEXT_VERSION]
+        return "fallback:" + hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    async def _ensure_faiss_initialized(self) -> None:
+        """Reuse SDK initialization for clients created after startup/config changes."""
+        async with self._faiss_init_lock:
+            client = self._faiss_db
+            if client is not None and self._initialized_faiss is not client:
+                await client.initialize()
+                self._initialized_faiss = client
 
     # ═══════════════════════════════════════════════════
     #  numpy 降级（SQLite emoji_embedding 表）
@@ -247,8 +271,11 @@ class EmbeddingService:
 
     def _load_fallback_matrix(self) -> None:
         """从 SQLite emoji_embedding 表加载向量到内存矩阵。"""
-        if self._fallback_loaded:
+        provider = self._get_provider()
+        signature = self._fallback_signature(provider) if provider is not None else ""
+        if self._fallback_loaded and self._fallback_model_sig == signature:
             return
+        self._fallback_model_sig = signature
 
         self._fallback_matrix = None
         self._fallback_paths = []
@@ -259,14 +286,7 @@ class EmbeddingService:
             self._fallback_loaded = True
             return
 
-        rows = None
-        for sig in ("fallback",):
-            try:
-                rows = db.load_embeddings_by_sig(sig)
-                if rows:
-                    break
-            except Exception:
-                continue
+        rows = db.load_embeddings_by_sig(signature) if signature else []
 
         if not rows:
             self._fallback_loaded = True
@@ -275,7 +295,7 @@ class EmbeddingService:
         # 构建 numpy 矩阵（对齐 livingmemory 的向量加载模式）
         vectors = []
         paths = []
-        dim = 0
+        dim = self._get_provider_dim(provider) if provider is not None else 0
         for r in rows:
             blob = r.get("vector")
             path = r.get("path")
@@ -284,7 +304,7 @@ class EmbeddingService:
             try:
                 vec = np.frombuffer(bytes(blob), dtype=np.float32)
                 d = int(r.get("dim", 0))
-                if d > 0 and len(vec) == d:
+                if d > 0 and len(vec) == d and (not dim or d == dim) and np.isfinite(vec).all():
                     vectors.append(vec)
                     paths.append(str(path))
                     dim = d
@@ -314,17 +334,8 @@ class EmbeddingService:
         if self._fallback_dim != self._provider_dim:
             logger.warning(
                 f"[Embedding] 维度不匹配: 已存={self._fallback_dim}, "
-                f"provider={self._provider_dim}。旧向量将被清除并重建。"
+                f"provider={self._provider_dim}。当前矩阵停用，等待回填。"
             )
-            # 清空 SQLite 向量表
-            db = getattr(self.plugin, "db_service", None)
-            if db and hasattr(db, "_get_connection"):
-                try:
-                    with db._get_connection() as conn:
-                        conn.execute("DELETE FROM emoji_embedding")
-                    logger.info("[Embedding] 已清除旧向量，将在回填中重建")
-                except Exception as e:
-                    logger.warning(f"[Embedding] 清除旧向量失败: {e}")
             self._fallback_loaded = False
             self._fallback_matrix = None
             self._fallback_paths = []
@@ -355,7 +366,7 @@ class EmbeddingService:
         # 2. 尝试 FaissVecDB
         if self._init_faiss() and self._faiss_db is not None:
             try:
-                await self._faiss_db.initialize()
+                await self._ensure_faiss_initialized()
                 logger.info("[Embedding] FaissVecDB 初始化完成 ✅")
             except Exception as e:
                 logger.warning(f"[Embedding] FaissVecDB 初始化失败，降级: {e}")
@@ -414,13 +425,16 @@ class EmbeddingService:
         # FaissVecDB 路径
         if self._init_faiss() and self._faiss_db is not None:
             try:
-                await self._faiss_db.insert(
-                    content=text,
-                    metadata={"path": path, "category": str(entry.get("category", ""))},
+                await self._ensure_faiss_initialized()
+                ids = await self._faiss_db.insert_batch(
+                    contents=[text],
+                    metadatas=[{"path": path, "category": str(entry.get("category", ""))}],
+                    tasks_limit=1,
                 )
-                return True
+                return len(ids) == 1
             except Exception as e:
                 logger.debug(f"[Embedding] FaissVecDB 插入失败: {e}")
+                return False
 
         # numpy 降级
         return await self._fallback_insert(path, text)
@@ -428,20 +442,13 @@ class EmbeddingService:
     async def delete_by_path(self, path: str) -> bool:
         """按 path 删除向量。"""
         if self._init_faiss() and self._faiss_db is not None:
-            try:
-                ds = self._faiss_db.document_storage
-                docs = await ds.get_documents(metadata_filters={"path": path}, limit=1)
-                if docs and len(docs) > 0:
-                    uuid_id = docs[0].get("doc_id")
-                    if uuid_id:
-                        await self._faiss_db.delete(uuid_id)
-                        return True
-            except Exception:
-                pass
+            await self._ensure_faiss_initialized()
+            await self._faiss_db.delete_documents(metadata_filters={"path": path})
+            return True
 
         db = getattr(self.plugin, "db_service", None)
         if db and hasattr(db, "delete_embedding"):
-            db.delete_embedding(path)
+            await asyncio.to_thread(db.delete_embedding, path)
             self._fallback_loaded = False
             return True
         return False
@@ -451,6 +458,7 @@ class EmbeddingService:
         provider = self._get_provider()
         if provider is None:
             return False
+        signature = self._fallback_signature(provider)
 
         try:
             vec = await provider.get_embedding(text)
@@ -465,8 +473,14 @@ class EmbeddingService:
             return False
 
         try:
-            blob = np.array(vec, dtype=np.float32).tobytes()
-            db.upsert_embedding(path, blob, dim=len(vec), model_sig="fallback")
+            if signature != self._fallback_signature(provider):
+                return False
+            values = np.asarray(vec, dtype=np.float32)
+            expected = self._get_provider_dim(provider)
+            if values.ndim != 1 or not np.isfinite(values).all() or (expected and len(values) != expected):
+                return False
+            await asyncio.to_thread(db.upsert_embedding, path, values.tobytes(),
+                                    dim=len(values), model_sig=signature)
             self._fallback_loaded = False  # 下次 search 时重载
             return True
         except Exception as e:
@@ -492,6 +506,7 @@ class EmbeddingService:
         # FaissVecDB 路径
         if self._init_faiss() and self._faiss_db is not None:
             try:
+                await self._ensure_faiss_initialized()
                 results = await self._faiss_db.retrieve(
                     query=processed, k=k, fetch_k=k * 2, rerank=False
                 )
@@ -553,21 +568,25 @@ class EmbeddingService:
                 vec = await provider.get_embedding(query)
                 if not vec:
                     return []
+                if self._fallback_model_sig != self._fallback_signature(provider):
+                    return []
             except Exception:
                 return []
 
             # 余弦相似度
             qv = np.array(vec, dtype=np.float32)
+            if qv.ndim != 1 or not np.isfinite(qv).all():
+                return []
             q_norm = np.linalg.norm(qv)
             if q_norm == 0:
                 return []
             qv = qv / q_norm
 
-            # 维度安全检查：不匹配则清空旧向量（对齐 livingmemory _check_and_fix_dimension_mismatch）
+            # 维度不匹配时停用当前矩阵，保留其他模型的持久数据。
             if self._fallback_matrix.shape[1] != len(qv):
                 logger.warning(
                     f"[Embedding] 维度不匹配: matrix={self._fallback_matrix.shape[1]}, "
-                    f"query={len(qv)}。清除旧向量，将在下次回填中重建。"
+                    f"query={len(qv)}。停用当前矩阵，等待回填。"
                 )
                 self._fallback_loaded = False
                 self._fallback_matrix = None
@@ -600,156 +619,72 @@ class EmbeddingService:
     # ═══════════════════════════════════════════════════
 
     async def backfill_existing(self, batch_size: int | None = None) -> int:
-        """启动时批量回填缺少向量的旧 emoji。
-
-        对齐 livingmemory index_rebuild 的批量处理模式。
-        关键：回填到当前活跃的存储后端（FaissVecDB 或 SQLite），不混用。
-        """
-        # 开关关闭时跳过回填，避免触发 provider 探测与重复日志
+        """Reuse FaissVecDB bulk embedding, retries and storage APIs."""
         if not self._embedding_enabled():
             return 0
-
-        if batch_size is None:
-            batch_size = self.BACKFILL_BATCH_SIZE
-
         db = getattr(self.plugin, "db_service", None)
-        if not db:
+        if db is None:
             return 0
-
-        # 获取所有 emoji 路径
-        try:
-            all_paths = db.get_all_paths()
-        except Exception as e:
-            logger.warning(f"[Embedding] 回填失败 — 无法获取 emoji 列表: {e}")
-            return 0
-        if not all_paths:
-            return 0
-
-        # 判断当前活跃的存储后端，据此检查已有向量
+        batch_size = max(1, int(batch_size or self.BACKFILL_BATCH_SIZE))
         using_faiss = self._init_faiss() and self._faiss_db is not None
-
         if using_faiss:
-            # FaissVecDB：检查其文档存储中已有的 path
-            try:
-                ds = self._faiss_db.document_storage
-                existing_docs = await ds.get_documents(metadata_filters={}, limit=100000)
-                embedded = set()
-                for doc in existing_docs:
-                    if isinstance(doc, dict):
-                        meta = doc.get("metadata", {})
-                        if isinstance(meta, str):
-                            try:
-                                meta = json.loads(meta)
-                            except (json.JSONDecodeError, TypeError):
-                                meta = {}
-                        if isinstance(meta, dict):
-                            p = meta.get("path", "")
-                            if p:
-                                embedded.add(p)
-            except Exception:
-                embedded = set()
+            await self._ensure_faiss_initialized()
+            docs = await self._faiss_db.document_storage.get_documents(metadata_filters={}, limit=None, offset=None)
+            embedded = set()
+            for doc in docs:
+                metadata = doc.get("metadata") or {}
+                if isinstance(metadata, str):
+                    metadata = json.loads(metadata)
+                if isinstance(metadata, dict) and metadata.get("path"):
+                    embedded.add(metadata["path"])
         else:
-            # SQLite 降级
-            try:
-                embedded = set(db.get_all_embedding_paths())
-            except Exception:
-                embedded = set()
-
-        missing = [p for p in all_paths if p not in embedded]
-        if not missing:
-            backend = "FaissVecDB" if using_faiss else "SQLite"
-            logger.info(
-                f"[Embedding] 回填跳过 — {backend} 中全部 {len(all_paths)} 条已有向量"
-            )
-            # 如果 FaissVecDB 空但 SQLite 有数据，提示迁移
-            if using_faiss:
-                sqlite_embedded = set()
-                try:
-                    sqlite_embedded = set(db.get_all_embedding_paths())
-                except Exception:
-                    pass
-                if len(sqlite_embedded) > len(embedded):
-                    logger.info(
-                        f"[Embedding] 检测到 SQLite 中有 {len(sqlite_embedded)} 条旧向量，"
-                        f"正在迁移到 FaissVecDB..."
-                    )
-                    missing = [p for p in all_paths if p not in embedded]
-                    # 清除 embedded 判断，强制全量回填到 FaissVecDB
-                    embedded = set()
-                    missing = [p for p in all_paths if p in sqlite_embedded]
-            if not missing:
+            provider = self._get_provider()
+            if provider is None:
                 return 0
-
-        backend = "FaissVecDB" if using_faiss else "SQLite"
-        logger.info(
-            f"[Embedding] 回填开始 → {backend}: {len(missing)}/{len(all_paths)} 条缺少向量"
-        )
-
-        # 加载索引元数据
-        idx = {}
-        try:
-            db = getattr(self.plugin, "db_service", None)
-            if db and db.count_total() > 0:
-                idx = db.get_index_cache_readonly()
-        except Exception:
-            pass
-
+            embedded = set(await asyncio.to_thread(db.get_all_embedding_paths,
+                                                  model_sig=self._fallback_signature(provider)))
+        missing = [path for path in await asyncio.to_thread(db.get_all_paths) if path not in embedded]
         written = 0
-        for i in range(0, len(missing), batch_size):
-            batch = missing[i : i + batch_size]
-            batch_written = 0
-            for path in batch:
-                entry = idx.get(path, {})
-                if not entry:
-                    try:
-                        entry = db.get_emoji(path) or {}
-                    except Exception:
-                        pass
-                text = self._build_search_text(entry)
-                if not text:
-                    continue
-                if using_faiss:
-                    # 直接写入 FaissVecDB
-                    ok = await self._faiss_insert(path, text, entry)
-                else:
-                    # 写入 SQLite
-                    ok = await self._fallback_insert(path, text)
-                if ok:
-                    batch_written += 1
-            written += batch_written
-            if batch_written > 0:
-                logger.info(
-                    f"[Embedding] 回填进度: {min(i + batch_size, len(missing))}/{len(missing)}, "
-                    f"本批 +{batch_written}"
-                )
-
-        # 刷新缓存
-        if not using_faiss:
-            self._fallback_loaded = False
-            self._load_fallback_matrix()
-
-        logger.info(
-            f"[Embedding] 回填完成 → {backend}: 成功 {written}/{len(missing)}"
-        )
+        for start in range(0, len(missing), batch_size):
+            batch = missing[start:start + batch_size]
+            generations = await asyncio.to_thread(db.get_search_refresh_generations, batch)
+            entries = await asyncio.to_thread(db.get_entries, batch)
+            items = [(path, entry, self._build_search_text(entry)[:4000]) for path, entry in entries.items()]
+            items = [item for item in items if item[2]]
+            successful = []
+            if using_faiss and items:
+                try:
+                    ids = await self._faiss_db.insert_batch(
+                        contents=[text for _, _, text in items],
+                        metadatas=[{"path": path, "category": entry.get("category", "")} for path, entry, _ in items],
+                        batch_size=batch_size, tasks_limit=1,
+                    )
+                    if len(ids) != len(items):
+                        raise RuntimeError("incomplete FaissVecDB batch")
+                    successful = [path for path, _, _ in items]
+                except Exception as exc:
+                    failed_paths = [path for path, _, _ in items]
+                    # Older SDK versions can leave partial documents after a failed batch.
+                    for path in failed_paths:
+                        try:
+                            await self._faiss_db.delete_documents(metadata_filters={"path": path})
+                        except Exception:
+                            pass
+                    await asyncio.to_thread(db.enqueue_search_refresh, failed_paths)
+                    logger.warning(f"[Embedding] Batch backfill queued for retry: {exc}")
+            else:
+                for path, _, text in items:
+                    if await self._fallback_insert(path, text):
+                        successful.append(path)
+                    else:
+                        await asyncio.to_thread(db.enqueue_search_refresh, [path])
+            written += len(successful)
+            for path in successful:
+                if path in generations:
+                    await asyncio.to_thread(db.finish_search_refresh, path, generations[path])
+        self.invalidate_cache()
+        logger.info(f"[Embedding] Backfill completed: {written}/{len(missing)}")
         return written
-
-    async def _faiss_insert(self, path: str, text: str, entry: dict[str, Any]) -> bool:
-        """向 FaissVecDB 插入一条。"""
-        if self._faiss_db is None:
-            return False
-        try:
-            await self._faiss_db.insert(
-                content=text,
-                metadata={"path": path, "category": str(entry.get("category", ""))},
-            )
-            return True
-        except Exception as e:
-            logger.debug(f"[Embedding] FaissVecDB 插入失败 {path}: {e}")
-            return False
-
-    # ═══════════════════════════════════════════════════
-    #  清理
-    # ═══════════════════════════════════════════════════
 
     async def _upgrade_corpus_if_needed(self) -> None:
         """语料格式变更时清掉旧向量，让 backfill 按新文档重建。

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 
 from ..util.safe_io import safe_remove_file
 from .image_download_service import ImageDownloadService
@@ -40,7 +41,10 @@ class BackgroundStealQueue:
         # they ever reach the queue-full check.
         self.capture_limit = max(4, min(32, self.capacity))
         base_dir = getattr(plugin, "base_dir", None)
-        self.staging_dir = Path(base_dir or Path.cwd()) / "staging"
+        data_dir = Path(base_dir or StarTools.get_data_dir("astrbot_plugin_stealer"))
+        if not data_dir.is_absolute():
+            raise ValueError("plugin data directory must be absolute")
+        self.staging_dir = data_dir / "staging"
         self._queue: asyncio.Queue[StealJob] = asyncio.Queue(maxsize=self.capacity)
         self._workers: list[asyncio.Task[Any]] = []
         self._capture_tasks: set[asyncio.Task[Any]] = set()
@@ -336,10 +340,7 @@ class BackgroundStealQueue:
                 )
                 if success and isinstance(index, dict) and not job.to_pending:
                     async with self._save_lock:
-                        current = await self.plugin.index_manager.load_index()
-                        current = dict(current or {})
-                        current.update(index)
-                        await self.plugin.index_manager.save_index(current)
+                        await self.plugin.index_manager.save_index(index)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

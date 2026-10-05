@@ -56,7 +56,7 @@ async def test_v5_migration_and_metadata():
     # 迁移后版本号
     with sqlite3.connect(db_path) as conn:
         ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
-    assert ver == "6"
+    assert ver == str(DatabaseService.SCHEMA_VERSION)
 
     # 旧 pending tags 拆入关联表（主键 (path,tag) 天然去重，与正式表 emoji_tag 语义一致）
     p = db.get_pending(1)
@@ -153,7 +153,7 @@ def test_fresh_db_creates_full_schema():
     # 版本直接到当前 schema
     with sqlite3.connect(db_path) as conn:
         ver = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
-    assert ver == "6"
+    assert ver == str(DatabaseService.SCHEMA_VERSION)
 
     # 全列存在（fresh 库 CREATE 含元数据列，_migrate_v5 的 ALTER 被 duplicate 容错跳过）
     with sqlite3.connect(db_path) as conn:

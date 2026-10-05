@@ -24,16 +24,12 @@ class LibraryQueries:
     }
 
     def get_library_counts(self) -> dict[str, int]:
+        clauses = dict(self._LIBRARY_CLAUSES)
+        clauses["automatic"] = clauses["general"] + " AND TRIM(COALESCE(e.retention_class, 'native')) NOT IN ('external', 'pinned')"
         with self._get_connection() as conn:
-            counts = {
-                key: conn.execute(f"SELECT COUNT(*) FROM emoji e WHERE {clause}").fetchone()[0]
-                for key, clause in self._LIBRARY_CLAUSES.items()
-            }
-            counts["automatic"] = conn.execute(
-                "SELECT COUNT(*) FROM emoji e WHERE " + self._LIBRARY_CLAUSES["general"]
-                + " AND TRIM(COALESCE(e.retention_class, 'native')) NOT IN ('external', 'pinned')"
-            ).fetchone()[0]
-            return counts
+            aggregates = ", ".join(f"SUM(CASE WHEN {clause} THEN 1 ELSE 0 END) AS {key}" for key, clause in clauses.items())
+            row = conn.execute(f"SELECT {aggregates} FROM emoji e").fetchone()
+            return {key: int(row[key] or 0) for key in clauses}
 
     def get_emojis_paginated(
         self,
@@ -103,7 +99,6 @@ class LibraryQueries:
 
             # 搜索过滤（描述/标签/场景/分类/hash/来源/文件名/路径）
             if search_query:
-                search_pattern = f"%{search_query}%"
                 search_clause = (
                     "(e.desc LIKE ? OR e.category LIKE ? OR e.hash LIKE ?"
                     " OR e.origin_target LIKE ? OR e.source LIKE ? OR e.path LIKE ?"
@@ -114,10 +109,14 @@ class LibraryQueries:
                     "SELECT 1 FROM emoji_scene s WHERE s.path = e.path AND s.scene LIKE ?"
                     "))"
                 )
-                where_clauses.append(search_clause)
-                params.extend([search_pattern] * 10)
-                category_count_where_clauses.append(search_clause)
-                category_count_params.extend([search_pattern] * 10)
+                search_clause = search_clause.replace("LIKE ?", r"LIKE ? ESCAPE '\'")
+                for term in dict.fromkeys(search_query.split(maxsplit=7)):
+                    literal = term.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+                    search_pattern = f"%{literal}%"
+                    where_clauses.append(search_clause)
+                    params.extend([search_pattern] * 10)
+                    category_count_where_clauses.append(search_clause)
+                    category_count_params.extend([search_pattern] * 10)
 
             where_sql = ""
             if where_clauses:

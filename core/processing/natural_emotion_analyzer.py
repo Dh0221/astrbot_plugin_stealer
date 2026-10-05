@@ -21,21 +21,22 @@ from ..search.text_similarity import calculate_hybrid_similarity, _has_negation_
 # 标记：模型明确选择不发送，用于区分"LLM 异常"和"模型说 none"
 _EMOTION_ABSTAIN = object()
 
-_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = (
-    "你是表情包检索词提取器。根据对话从 AI 回复中提取能搜到表情包的关键词或短句，并给出 1~3 个情绪先验。\n"
-    "可选情绪分类：{emotion_list}\n"
-    "\n"
-    "任务：\n"
-    "1. 只从回复里摘录关键词或短句，不要总结成抽象概念。\n"
-    "2. 如果没有明显关键词，就用回复原文。\n"
-    "3. emotions 从给定分类里选 1~3 个，按相关度排序。每个分类机会均等，不要把某一类当默认。\n"
-    "\n"
-    "用户消息：{user_message}\n"
-    "回复：{llm_reply}\n"
-    "\n"
-    "输出示例：\n"
-    "{\"query\": \"摸鱼 下班 辛苦了\", \"emotions\": [\"tired\", \"sigh\"]}\n"
-)
+_LEGACY_EMOTION_TEMPLATE_HASH = '1914107e8c9b676649a0e92af223db633a7d56e0468dac44148df009e14d4201'
+_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """你根据当前对话，为助手自然表达情绪、接梗或回应准备表情包检索词。发送者是助手，接收者是当前用户。无需用户要求发表情。
+可选情绪分类：{emotion_list}
+
+任务：
+1. 综合用户消息与助手回复理解这轮交流：共鸣、接梗、调侃、自嘲、安慰、感谢、关心、催促或抗议。
+2. 用户消息帮助判断语境，不要把用户的心情直接当成助手的心情。区分安慰与嘲笑、关心式催促与敌意反击。
+3. query 用一条简短中文检索句表达助手想怎样回应，保留关键台词与否定。仅有分类名时信息不足；不要编造画面或角色。
+4. emotions 从给定分类选 0~3 个弱先验。每个分类机会均等，不要把某一类当默认。
+
+用户消息：{user_message}
+助手回复：{llm_reply}
+
+只输出合法 JSON，例如：
+{"query":"安慰加班 辛苦了早点休息","emotions":["tired","sigh"]}
+"""
 
 
 @dataclass
@@ -108,7 +109,7 @@ class NaturalEmotionAnalyzer:
     def _load_emotion_analysis_template(self) -> str:
         """从配置加载情绪分析提示词；为空时回退到内置模板。"""
         custom = getattr(self.plugin_config, "emotion_analysis_prompt", "") or ""
-        if custom.strip():
+        if custom.strip() and hashlib.sha256(custom.strip().encode("utf-8")).hexdigest() != _LEGACY_EMOTION_TEMPLATE_HASH:
             return str(custom).strip()
         return _EMOTION_ANALYSIS_DEFAULT_TEMPLATE
 

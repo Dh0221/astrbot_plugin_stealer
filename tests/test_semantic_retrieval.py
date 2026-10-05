@@ -26,7 +26,7 @@ def test_parser_reads_overlay_and_emotions():
     assert overlay == "算了"
     assert "tired" in emotions
     assert emotions[0] == "sigh"
-    assert "算了" in scenes
+    assert scenes == ["又被安排加班", "算了不想干了"]
     assert "熊猫头" in tags
     assert "放弃" in desc
 

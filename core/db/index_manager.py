@@ -28,6 +28,11 @@ def invalidate_search(plugin) -> None:
 async def refresh_search_entry(plugin, path: str, entry=None, *, previous_path: str | None = None) -> None:
     """同步新增、更新、移动或删除后的向量；模型故障不回滚图库写入。"""
     invalidate_search(plugin)
+    manager = getattr(plugin, "index_manager", None)
+    running = getattr(manager, "search_worker_running", None)
+    if callable(running) and running():
+        manager._search_wakeup.set()
+        return
     try:
         smart = getattr(getattr(plugin, "meme_selector", None), "_smart_select_service", None)
         embedding = getattr(smart, "_embedding_service", None)
@@ -66,6 +71,63 @@ class IndexManager:
         self.categories_dir = getattr(plugin_instance, "categories_dir", None)
         self.cache_dir = getattr(plugin_instance, "cache_dir", None)
         self._migration_done: bool = False
+        self._search_task: asyncio.Task | None = None
+        self._search_wakeup = asyncio.Event()
+
+    def search_worker_running(self) -> bool:
+        return self._search_task is not None and not self._search_task.done()
+
+    def start_search_worker(self) -> None:
+        if not self.search_worker_running():
+            scheduler = getattr(self.plugin, "task_scheduler", None)
+            if scheduler is None:
+                raise RuntimeError("task_scheduler is required for search refresh")
+            self._search_task = scheduler.create_task("stealer_search_refresh", self._search_refresh_loop())
+
+    async def stop_search_worker(self) -> None:
+        if self._search_task is not None:
+            await self.plugin.task_scheduler.cancel_task("stealer_search_refresh")
+            self._search_task = None
+
+    async def drain_search_refresh(self) -> int:
+        """Refresh a bounded batch; failed provider calls retain durable jobs."""
+        smart = getattr(getattr(self.plugin, "meme_selector", None), "_smart_select_service", None)
+        embedding = getattr(smart, "_embedding_service", None)
+        if embedding is None or not embedding._embedding_enabled():
+            return 0
+        available = getattr(embedding, "is_available", None)
+        if callable(available) and not available():
+            return 0
+        jobs = await asyncio.to_thread(self.db_service.get_search_refresh_jobs)
+        for job in jobs:
+            path = job["path"]
+            error = ""
+            try:
+                entry = await asyncio.to_thread(self.db_service.get_emoji, path)
+                await embedding.delete_by_path(path)
+                if entry and await embedding.insert_emoji(path, entry) is False:
+                    raise RuntimeError("embedding provider unavailable")
+            except Exception as exc:
+                error = str(exc) or type(exc).__name__
+                logger.warning(f"[Embedding] 向量刷新等待重试 [{path}]: {error}")
+            await asyncio.to_thread(self.db_service.finish_search_refresh, path, job["generation"], error)
+        return len(jobs)
+
+    async def _search_refresh_loop(self) -> None:
+        while True:
+            self._search_wakeup.clear()
+            try:
+                count = await self.drain_search_refresh()
+            except Exception as exc:
+                count = 0
+                logger.warning(f"[Embedding] 后台刷新异常: {exc}")
+            if count >= 20:
+                await asyncio.sleep(0)
+                continue
+            try:
+                await asyncio.wait_for(self._search_wakeup.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
 
     async def load_index(self) -> dict[str, Any]:
         """从数据库加载索引；DB 为空时尝试从旧 JSON 一次性迁移。
@@ -82,7 +144,7 @@ class IndexManager:
 
             if db_count > 0:
                 logger.debug(f"[DB] 从数据库加载 {db_count} 条索引")
-                return self.db_service.get_index_cache_readonly()
+                return await asyncio.to_thread(self.db_service.get_index_cache_readonly)
 
             if self._migration_done:
                 return idx
@@ -117,7 +179,8 @@ class IndexManager:
         if self.db_service is None:
             return
         changed = await self.db_service.sync_index(idx)
-        invalidate_search(self.plugin)
+        if changed:
+            invalidate_search(self.plugin)
         for path in changed or []:
             await refresh_search_entry(self.plugin, path)
 

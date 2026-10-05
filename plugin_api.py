@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import binascii
 import hashlib
@@ -12,7 +11,7 @@ from typing import Any
 from astrbot.api import logger
 
 from .core.util.blacklist import add_blacklist_hash
-from .core.db.index_manager import invalidate_search, refresh_search_entry
+from .core.db.index_manager import refresh_search_entry
 from .core.processing.semantic_schema import SEARCH_METADATA_FIELDS
 from .core.util.normalization import (
     canonicalize_path,
@@ -20,7 +19,7 @@ from .core.util.normalization import (
     normalize_label_list,
     normalize_scope_mode,
 )
-from .core.util.safe_io import safe_remove_file
+from .core.util.safe_io import commit_image_file, safe_remove_file, unique_image_path, write_image_file
 
 from .api.library import LibraryRoutes
 from .api.preferences import PreferenceRoutes
@@ -131,12 +130,16 @@ class PluginAPI(
             return db.get_index_cache_readonly()
         return {}
 
+    async def _move_image_file(self, old: str, new: str, category: str, updates=None) -> None:
+        async def commit_move(_target):
+            if not await self._move_index_path(old, new, category, updates):
+                raise RuntimeError("update image metadata failed")
+        await commit_image_file(old, new, commit_move)
+
     def _find_index_entry_by_hash(self, img_hash: str) -> tuple[str, dict[str, Any]] | None:
         db = self._db
         if db and hasattr(db, "get_emoji_by_hash"):
-            found = db.get_emoji_by_hash(img_hash)
-            if found:
-                return found
+            return db.get_emoji_by_hash(img_hash)
         for path, meta in self._get_index().items():
             if isinstance(meta, dict) and meta.get("hash") == img_hash:
                 return path, dict(meta)
@@ -154,8 +157,6 @@ class PluginAPI(
         if ok:
             if SEARCH_METADATA_FIELDS.intersection(updates):
                 await refresh_search_entry(self.plugin, path)
-            else:
-                invalidate_search(self.plugin)
         return ok
 
     async def _move_index_path(
@@ -173,19 +174,7 @@ class PluginAPI(
             await refresh_search_entry(self.plugin, new_path, previous_path=old_path)
         return ok
 
-    @staticmethod
-    def _unique_path(target_dir: Path, filename: str) -> Path:
-        candidate = target_dir / filename
-        if not candidate.exists():
-            return candidate
-        stem = candidate.stem
-        suffix = candidate.suffix
-        counter = 1
-        while True:
-            candidate = target_dir / f"{stem}_{counter}{suffix}"
-            if not candidate.exists():
-                return candidate
-            counter += 1
+    _unique_path = staticmethod(unique_image_path)
 
     def _get_category_keys(self) -> list[str]:
         cfg = getattr(self.plugin, "plugin_config", None)
@@ -485,7 +474,6 @@ class PluginAPI(
         filename = f"{ts}_{uuid.uuid4().hex[:8]}{file_ext}"
         cat_dir = self._cfg.ensure_category_dir(final_cat)
         file_path = cat_dir / filename
-        await asyncio.to_thread(file_path.write_bytes, file_content)
 
         img_hash = file_hash or hashlib.sha256(file_content).hexdigest()
         data = {
@@ -503,15 +491,11 @@ class PluginAPI(
             "created_at": ts,
         }
         db = self._db
-        if db and hasattr(db, "insert_batch"):
-            inserted = await db.insert_batch([data])
-            if inserted <= 0:
-                try:
-                    await safe_remove_file(str(file_path))
-                finally:
-                    raise RuntimeError("insert image metadata failed")
-            await refresh_search_entry(self.plugin, str(file_path), data)
-        else:
-            logger.warning("[PluginAPI] DB 不可用，无法插入图片元数据")
-            raise RuntimeError("db_service unavailable for insert_batch")
+        if db is None:
+            raise RuntimeError("database unavailable")
+        async def commit_upload(_target):
+            if await db.insert_batch([data]) <= 0:
+                raise RuntimeError("insert image metadata failed")
+        await write_image_file(file_content, file_path, commit_upload)
+        await refresh_search_entry(self.plugin, str(file_path), data)
         return {"hash": img_hash, "category": final_cat}

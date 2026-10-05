@@ -39,11 +39,8 @@ class LibraryRoutes:
         image_hash = request.args.get("hash", "").strip()
         if not image_hash:
             return jsonify({"success": False, "error": "缺少 hash"})
-        file_path = None
-        for path_str, meta in self._get_index().items():
-            if isinstance(meta, dict) and meta.get("hash") == image_hash:
-                file_path = path_str
-                break
+        found = await asyncio.to_thread(self._find_index_entry_by_hash, image_hash)
+        file_path = found[0] if found else None
 
         if not file_path:
             db = self._db
@@ -300,7 +297,8 @@ class LibraryRoutes:
             character = str(request.args.get("character", "") or "")
             library = str(request.args.get("library", "") or "")
 
-            payload = self._list_images_from_database(
+            payload = await asyncio.to_thread(
+                self._list_images_from_database,
                 db=self._db,
                 page=page,
                 page_size=page_size,
@@ -312,7 +310,8 @@ class LibraryRoutes:
                 library=library,
             )
             if payload is None:
-                payload = self._list_images_from_index(
+                payload = await asyncio.to_thread(
+                    self._list_images_from_index,
                     page=page,
                     page_size=page_size,
                     category=category,
@@ -350,4 +349,11 @@ class LibraryRoutes:
             return jsonify({"success": False, "error": str(e)})
 
     async def handle_health_check(self):
-        return jsonify({"success": True, "status": "ok", "service": "emoji-manager-webui"})
+        cfg = getattr(self.plugin, "plugin_config", None)
+        setup = None if cfg is None else {
+            "capture_enabled": bool(getattr(cfg, "steal_meme", False)),
+            "auto_send_enabled": bool(getattr(cfg, "auto_send_meme", False)),
+            "context_enabled": bool(getattr(cfg, "enable_natural_emotion_analysis", False)),
+            "embedding_enabled": bool(getattr(cfg, "enable_embedding_search", False)),
+        }
+        return jsonify({"success": True, "status": "ok", "service": "emoji-manager-webui", "setup": setup})

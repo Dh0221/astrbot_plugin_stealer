@@ -47,8 +47,7 @@ class ClassificationParser:
         )
 
     def sanitize_scenes(self, values: Any, overlay_text: str = "") -> list[str]:
-        """scenes 保留适用对话句，最多 40 字；优先放入图上文字。"""
-        overlay_scene = clip_chars(str(overlay_text or "").strip(), 40)
+        """保留最多两条适用对话句；图上文字由 overlay_text 独立存储。"""
         cleaned: list[str] = []
         seen: set[str] = set()
         for item in self.normalize_label_list(values, MAX_SCENES + 2):
@@ -60,9 +59,6 @@ class ClassificationParser:
             cleaned.append(item)
             if len(cleaned) >= MAX_SCENES:
                 break
-        if overlay_scene and overlay_scene not in seen:
-            cleaned.insert(0, overlay_scene)
-            cleaned = cleaned[:MAX_SCENES]
         return cleaned
 
     def _normalize_category(self, raw: str, *, fallback_other: bool = True) -> str:

@@ -1,5 +1,6 @@
 """LLM meme search and send workflows used by the registered entrypoints."""
 
+import asyncio
 import os
 
 from astrbot.api import logger
@@ -16,83 +17,68 @@ class MemeSearchToolWorkflow:
         *,
         limit: int = 5,
         idx: dict | None = None,
+        reply: str = "",
+        character: str = "",
     ):
         """委托给 MemeSelector.smart_search。"""
         if idx is None:
             idx = (
-                self.db_service.get_index_cache_readonly()
+                await asyncio.to_thread(self.db_service.get_index_cache_readonly)
                 if self.db_service.count_total() > 0
                 else {}
             )
 
-        return await self.meme_selector.smart_search(query, limit=limit, idx=idx, event=event)
+        if character:
+            names = self.meme_selector._smart_select_service._character_names
+            idx = {path: data for path, data in idx.items()
+                   if character.strip().casefold() in names(data)}
+        context = " ".join(part for part in (query, reply, character) if part).strip()
+        return await self.meme_selector.smart_search(context, limit=limit, idx=idx, event=event)
 
-    def _find_similar_categories(self, query: str, top_n: int = 3) -> list[str]:
-        """找到与查询词最相似的多个分类，委托给 MemeSelector。"""
-        return self.meme_selector.find_similar_categories(query, top_n)
-
-    async def _search_meme_impl(self, event: AstrMessageEvent, query: str):
-        """从插件索引中搜索表情包候选；不要直接浏览表情库目录或发送本地文件。
-
-        Args:
-            query(string): 2-8 个检索关键词。优先写图上文字、角色名、画面或语气，例如“猫猫 震惊 怎么会这样”。
-
-        使用建议：
-        - 这是从表情库选图的唯一入口；不要使用文件、终端或通用消息工具绕过它
-        - 若候选不合适，换图上原文、角色名或更具体的画面词再次调用本工具
-
-        返回值：
-        返回候选表情包列表，每个包含：
-        - 编号：用于调用 send_meme
-        - 分类：浏览分区，仅供参考
-        - 角色 / 图上文字 / 描述：选图时优先看这些
-
-        根据候选的图上文字、角色和描述选择最贴合的一张，然后调用 send_meme；不要猜测或传递文件路径。
-        """
+    async def _search_meme_impl(self, event: AstrMessageEvent, query: str, reply: str = "", character: str = ""):
+        """Build the current search's numbered, sendable candidates."""
         event = unwrap_event(event)
         query = str(query or "").strip()
         logger.info(f"[Tool] LLM 搜索表情包: {query}")
 
         turn_state = self._emoji_sender_engine.emoji_turn_state(event)
+        turn_state.set_candidates([])
 
         try:
             if not query:
-                yield "搜索失败：缺少 query 参数。请传入你当前心情词，例如：开心、无语、尴尬、感谢。"
+                yield "搜索失败：缺少 query。请描述要表达的台词、语气或场景，例如：安慰刚加班的朋友。"
                 return
 
             if not self.is_send_enabled_for_event(event):
-                yield "搜索失败：当前群聊已禁用表情包功能"
+                yield "搜索失败：当前会话已禁用表情包发送。"
                 return
 
             if self.db_service.count_total() > 0:
-                idx = self.db_service.get_index_cache_readonly()
+                idx = await asyncio.to_thread(self.db_service.get_index_cache_readonly)
             else:
                 logger.debug("索引未加载，正在加载...")
                 await self.index_manager.load_index()
-                idx = self.db_service.get_index_cache_readonly()
+                idx = await asyncio.to_thread(self.db_service.get_index_cache_readonly)
 
-            # smart_search 已内置关键词映射和模糊匹配（阈值0.4）
-            results = await self._search_meme_candidates(
-                event, query, limit=self.MAX_SEARCH_RESULTS, idx=idx
-            )
+            idx = await asyncio.to_thread(lambda: {
+                path: data for path, data in idx.items() if os.path.isfile(path)
+            })
+            search_options = {"limit": self.MAX_SEARCH_RESULTS, "idx": idx}
+            if reply:
+                search_options["reply"] = str(reply).strip()[:500]
+            if character:
+                search_options["character"] = str(character).strip()
+            results = await self._search_meme_candidates(event, query, **search_options)
 
             if not results:
-                similar = self._find_similar_categories(query, top_n=3)
-                suggestion = f"未找到与'{query}'匹配的表情包。"
-                if similar:
-                    suggestion += "\n\n您是否想找以下分类？\n- " + "\n- ".join(similar)
-                cats = self.plugin_config.get_categories()
-                suggestion += "\n\n可用分类：" + ", ".join(cats[:10])
-                if len(cats) > 10:
-                    suggestion += f" 等共{len(cats)}个分类"
-                logger.warning(f"[Tool] 未找到匹配: {query}, 推荐: {similar}")
-                yield suggestion
+                yield (f"未找到与“{query}”贴合的表情包。可补充图上原文或 reply；"
+                       "指定 character 时请核对角色名。当前没有可发送候选，可直接用文字回复。")
                 return
 
             candidates = []
-            result_lines = [f"找到 {len(results)} 个匹配的表情包：\n"]
+            result_lines = ["可发送候选；核对台词与语气，再选择编号："]
 
-            for i, (path, desc, emotion, tags) in enumerate(results):
+            for path, desc, emotion, tags in results:
                 if os.path.exists(path):
                     meta = idx.get(path, {}) if isinstance(idx, dict) else {}
                     raw_scenes = meta.get("scenes", None) if isinstance(meta, dict) else None
@@ -114,7 +100,7 @@ class MemeSearchToolWorkflow:
                     origin_target = str(meta.get("origin_target", "") or "") if isinstance(meta, dict) else ""
                     use_count = int(meta.get("use_count", 0) or 0) if isinstance(meta, dict) else 0
 
-                    candidate_id = f"emoji_{i + 1}"
+                    candidate_id = len(candidates) + 1
                     candidates.append(
                         {
                             "id": candidate_id,
@@ -131,7 +117,7 @@ class MemeSearchToolWorkflow:
                             "use_count": use_count,
                         }
                     )
-                    result_lines.append(f"\n[{i + 1}] 分类：{emotion}")
+                    result_lines.append(f"\n[{candidate_id}] 分类：{emotion}")
                     if character_name:
                         result_lines.append(f"    角色：{character_name}")
                     if overlay_text:
@@ -139,12 +125,7 @@ class MemeSearchToolWorkflow:
                     if tags:
                         result_lines.append(f"    标签：{tags}")
                     if scenes_str:
-                        result_lines.append(f"    画面短语：{scenes_str}")
-                    result_lines.append(f"    作用域：{scope_mode}")
-                    if use_count:
-                        result_lines.append(f"    使用次数：{use_count}")
-                    if source == "qq_store":
-                        result_lines.append("    来源：QQ商城")
+                        result_lines.append(f"    适合回应：{scenes_str}")
                     result_lines.append(f"    描述：{desc}")
 
             if not candidates:
@@ -154,7 +135,7 @@ class MemeSearchToolWorkflow:
             turn_state.set_candidates(candidates)
             result_lines.append(
                 f"\n\n下一步请从候选中选择一项，并调用 {self.SEND_MEME_TOOL_NAME}(emoji_id=编号) 发送。"
-                "候选不合适时请换关键词再次搜索；不要用文件、终端或通用消息工具直接发送表情库文件。"
+                "编号仅对应这次搜索。候选都不合适时可不发送，或补充 reply/character 重新搜索。"
             )
 
             result_text = "\n".join(result_lines)
@@ -168,7 +149,7 @@ class MemeSearchToolWorkflow:
     async def _send_meme_impl(self, event: AstrMessageEvent, emoji_id: int):
         """发送 search_meme 返回的候选表情包；不要猜测或直接传递文件路径。
 
-        选择原则：优先发送能代表你"当前心情词"的候选项。
+        选择原则：核对台词与适合回应的场景，保持与你准备发给用户的回复立场一致。
 
         Args:
             emoji_id(number): 表情包编号（从 search_meme 返回的候选列表中选择）
@@ -188,6 +169,8 @@ class MemeSearchToolWorkflow:
                 return
 
             try:
+                if isinstance(emoji_id, bool) or (isinstance(emoji_id, float) and not emoji_id.is_integer()):
+                    raise ValueError("integer candidate id required")
                 emoji_id = int(emoji_id)
             except Exception:
                 yield f"发送失败：reason=invalid_id。编号 {emoji_id} 无法解析为整数，请输入有效的数字编号。"
@@ -225,6 +208,7 @@ class MemeSearchToolWorkflow:
             await self.meme_selector.record_emoji_usage(path, trigger="llm_tool")
             await self._emoji_sender_engine.mark_auto_emoji_sent(event)
             turn_state.mark_active_sent()
+            turn_state.set_candidates([])
 
             mode_desc = "Telegram贴纸" if sent_as_sticker else "图片"
             success_msg = f"发送成功（{mode_desc}）。\n\n你发送的表情包：\n- 编号：{emoji_id}\n- 分类：{emotion}\n- 描述：{desc}"

@@ -51,7 +51,7 @@ class MemeSelector:
                 "", f"{user_message[:2000]}\n{text[:2000]}", event=event,
                 deterministic=True,
             )
-            idx = self._get_index()
+            idx = await self._candidate_index([item[0] for item in ranked])
             candidates = []
             seen = set()
             for item in ranked:
@@ -72,7 +72,7 @@ class MemeSelector:
 
     async def send_jev_selection(self, event: AstrMessageEvent, path: str, text: str) -> bool:
         """网络请求及延迟后重新核验候选，再走既有发送/计数链路。"""
-        idx = self._get_index()
+        idx = await self._candidate_index([path])
         data = idx.get(path) or idx.get(canonicalize_path(path))
         if not isinstance(data, dict) or not Path(path).is_file():
             return False
@@ -86,6 +86,12 @@ class MemeSelector:
 
     def _get_index(self) -> dict[str, Any]:
         return self._search_engine.get_index()
+
+    async def _candidate_index(self, paths: list[str]) -> dict[str, Any]:
+        db = getattr(self.plugin, "db_service", None)
+        if db is not None and callable(getattr(db, "get_entries", None)):
+            return await asyncio.to_thread(db.get_entries, paths)
+        return await asyncio.to_thread(self._get_index)
 
     def _invalidate_bm25_index(self) -> None:
         """委托给 MemeSearchEngine。"""
@@ -163,18 +169,17 @@ class MemeSelector:
             elif primary:
                 candidate_categories = self._selection_strategy._get_candidate_categories(primary)
 
-            if use_smart and context_text and len(context_text.strip()) > 5:
-                smart_path = await self._smart_select_service._select_emoji_smart_impl(
+            if use_smart and context_text.strip():
+                return await self._smart_select_service._select_emoji_smart_impl(
                     primary or (candidate_categories[0] if candidate_categories else ""),
                     context_text,
                     candidate_categories=candidate_categories,
                     event=event,
                 )
-                if smart_path:
-                    return smart_path
-
             for candidate_category in candidate_categories:
-                random_path = self._select_emoji_random_impl(candidate_category, event=event)
+                random_path = await asyncio.to_thread(
+                    self._select_emoji_random_impl, candidate_category, event=event,
+                )
                 if random_path:
                     return random_path
 

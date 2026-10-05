@@ -46,6 +46,7 @@ createApp({
         const images = ref([]);
         const categories = ref([]);
         const stats = reactive({ total: 0, categories: 0, today: 0 });
+        const setupInfo = ref(null);
         const loading = ref(true);
         const searchQuery = ref('');
         const selectedCategory = ref('');
@@ -798,6 +799,8 @@ createApp({
             const start = performance.now();
             try {
                 const res = await apiFetch('api/health');
+                const data = await res.json();
+                setupInfo.value = data.setup || null;
                 healthStatus.value = (performance.now() - start) < 200 ? 'ok' : 'slow';
             } catch (e) { healthStatus.value = 'error'; }
         };
@@ -2531,6 +2534,7 @@ createApp({
             images,
             categories,
             stats,
+            setupInfo,
             loading,
             searchQuery,
             selectedCategory,

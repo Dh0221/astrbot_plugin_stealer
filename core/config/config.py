@@ -26,7 +26,7 @@ class PluginConfig(BaseModel):
     meme_chance: float = 0.2
     send_meme_as_qq_sticker: bool = True
     send_meme_as_gif: bool = False
-    meme_send_char_delay: float = 0.3
+    meme_send_char_delay: float = 0.0
     meme_send_delay: float = 5.0
     meme_send_delay_random: bool = False
     meme_send_delay_max: float = 8.0
@@ -153,6 +153,7 @@ class PluginConfig(BaseModel):
 
     # WebUI 默认主题：auto/dark/light/minecraft/fallout。页面内切换后写入 KV，优先于该项。
     webui_theme: str = "auto"
+    show_advanced_settings: bool = False
 
     # === 内部状态 (不作为 Pydantic 字段) ===
     # 使用 PrivateAttr 或在 __init__ 中设置且不包含在 __annotations__ 中
