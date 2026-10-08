@@ -58,12 +58,11 @@ class TestTemplateLoading:
         for key in ("{emotion_list}", "{llm_reply}", "{user_message}"):
             assert key in _EMOTION_ANALYSIS_DEFAULT_TEMPLATE
 
-    def test_default_template_is_category_neutral(self):
+    def test_default_template_uses_context_for_query_and_emotion_priors(self):
         text = _EMOTION_ANALYSIS_DEFAULT_TEMPLATE
-        assert "每个分类机会均等" in text
-        assert "不要把某一类当默认" in text
-        assert "troll 仅" not in text
-        assert "无法判断" not in text
+        assert "以助手回复的立场和语气为准" in text
+        assert "保留原句中的否定含义" in text
+        assert "从给定分类中按相关度选 0~3 项" in text
 
     def test_default_template_renders_without_key_error(self):
         analyzer = _build_analyzer()

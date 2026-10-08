@@ -245,7 +245,7 @@ export const TEMPLATE = `
                 <ol>
                     <li><strong>{{ t('pages.dashboard.guide.collect', '准备图库') }}</strong><span>{{ t('pages.dashboard.guide.collect_hint', '上传图片并分析，或在插件配置中开启收集、选择视觉模型。') }}</span></li>
                     <li><strong>{{ t('pages.dashboard.guide.review', '确认内容') }}</strong><span>{{ t('pages.dashboard.guide.review_hint', '在待审核区通过图片；检查图上文字和“适合回应”的句子，再分配角色。') }}</span></li>
-                    <li><strong>{{ t('pages.dashboard.guide.chat', '正常聊天') }}</strong><span>{{ t('pages.dashboard.guide.chat_hint', 'Bot 在聊天中结合语境主动表达情绪、接梗和回应，无需点名要求发表情；遇到不合适的候选就跳过。') }}</span></li>
+                    <li><strong>{{ t('pages.dashboard.guide.chat', '正常聊天') }}</strong><span>{{ t('pages.dashboard.guide.chat_hint', 'Bot 在聊天中结合语境主动用表情表达情绪、接梗和回应，选择贴合语境的图片。') }}</span></li>
                 </ol>
                 <p>{{ t('pages.dashboard.guide.pending_hint', '待审核图片不会参与发送。图片已入库但仍选不准时，可预览重新分析，再确认写回。') }}</p>
                 <div class="usage-guide-actions">

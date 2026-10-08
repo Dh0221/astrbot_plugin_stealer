@@ -667,10 +667,10 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
     async def search_meme(self, event: AstrMessageEvent, query: str, reply: str = "", character: str = ""):
         """搜索表情包并返回编号、图上文字、角色和适合回应的场景。
 
-        聊天中想表达情绪、接梗或自然回应时可主动使用，无需用户要求发表情。
+        聊天中想表达情绪、接梗或自然回应时可主动使用。
         表情可单独回应，也可配合文字；按语境和交流节奏使用。
         核对候选与回复立场，合适时调用 send_meme(emoji_id=编号)。编号仅本次搜索有效。
-        候选不合适可补充台词重搜或用文字回复。选图和发图请使用这组工具，避免读取目录或猜测文件路径。
+        候选不合适可补充台词重搜或用文字回复。通过 search_meme 选图，再用 send_meme 发送候选编号。
 
         Args:
             query(string): 想表达的台词、语气或使用场景，支持自然句，例如“安慰刚加班的朋友”。
@@ -683,7 +683,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
 
     @filter.llm_tool(name=SEND_MEME_TOOL_NAME)
     async def send_meme(self, event: AstrMessageEvent, emoji_id: int):
-        """发送 search_meme 返回的候选表情包；不要猜测或直接传递文件路径。
+        """按本次 search_meme 返回的候选编号发送表情包。
 
         选择原则：核对图上文字和适用场景，保持与当前回复的立场一致；候选不合适时可以不发送。
 
@@ -704,7 +704,6 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
 
         注意：
         - image_ref 必须从当前消息中已有的图片 URL 或文件路径中选择，必填。
-        - 不需要自己打标，工具会交给 VLM 自动完成分类、标签、描述和场景分析。
         - 工具返回的 VLM 分析结果可用于向用户说明偷到了什么。
         - 当插件的表情包偷取总开关关闭，或当前会话被偷取黑白名单禁用时，本工具会拒绝入库。
 
@@ -787,7 +786,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         """Apply the passive-emoji gates and schedule at most one task per turn."""
 
         normalized_text = str(text or "").strip()
-        if not normalized_text:
+        if not normalized_text or self._emoji_sender_engine.is_command_event(event):
             return False
         turn_state = self._emoji_sender_engine.emoji_turn_state(event)
         if turn_state.is_active_sent():
@@ -798,6 +797,8 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
             return False
         if not self._emoji_sender_engine.claim_auto_emoji_turn(event):
             return False
+
+        turn_state.set_llm_reply(normalized_text)
 
         user_message = ""
         try:
@@ -832,7 +833,8 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         """
 
         role = str(getattr(response, "role", "assistant") or "assistant").lower()
-        if role not in {"", "assistant"}:
+        if self._emoji_sender_engine.is_command_event(event) or role not in {"", "assistant"}:
+            self._emoji_sender_engine.invalidate_auto_emoji_source(event)
             return False
         if getattr(response, "tools_call_args", None):
             return False
@@ -849,7 +851,9 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         result = event.get_result()
         if result is None:
             return False
-        if not result.is_llm_result():
+        if (self._emoji_sender_engine.is_command_event(event)
+                or not self._emoji_sender_engine.is_llm_reply_result(result)):
+            self._emoji_sender_engine.invalidate_auto_emoji_source(event)
             return False
         if any(isinstance(comp, MessageImage) for comp in getattr(result, "chain", [])):
             return False

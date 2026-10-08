@@ -183,7 +183,7 @@ def test_emotion_query_parses_json_and_legacy_word():
     assert legacy.search_query == "原文"
 
 
-def test_bundled_prompts_are_category_neutral_and_tag_light():
+def test_bundled_prompts_classify_by_meaning_and_allow_optional_tags():
     import json
     from pathlib import Path
 
@@ -195,11 +195,8 @@ def test_bundled_prompts_are_category_neutral_and_tag_light():
         "EMOJI_CLASSIFICATION_WITH_FILTER_PROMPT",
     ):
         text = data[key]
-        assert "每个分类机会均等" in text
-        assert "不要把某一类当默认" in text
+        assert "根据表情包表达的语气和使用场景选择最贴切的分类" in text
         assert "0~3" in text
-        assert "2~6" not in text
-        assert "troll 不是" not in text
         assert "GIF 九宫格" in text
         assert "不要写画面说明" in text
 

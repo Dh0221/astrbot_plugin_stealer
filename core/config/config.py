@@ -83,7 +83,7 @@ class PluginConfig(BaseModel):
 
     # === 智能选择：文字距离融合权重（预设见 _conf_schema.json _smart_section）===
     sim_weight_preset: str = "balanced"  # balanced / keyword / semantic / strict
-    sim_weight_ngram: float = 0.28  # 兼容旧配置保留，不再单独暴露
+    sim_weight_ngram: float = 0.28  # 融合权重；由 sim_weight_preset 统一配置
     sim_weight_cosine: float = 0.25
     sim_weight_substring: float = 0.12
     sim_weight_char: float = 0.08
@@ -131,7 +131,7 @@ class PluginConfig(BaseModel):
     custom_meme_classification_with_filter_prompt: str = ""
     emotion_analysis_prompt: str = ""
 
-    # === 内化常量（不再暴露给用户） ===
+    # === 运行常量 ===
     DO_REPLACE: ClassVar[bool] = True  # 达到上限始终替换旧表情
     ENABLE_RAW_CLEANUP: ClassVar[bool] = True  # raw 始终自动清理
     RAW_CLEANUP_INTERVAL: ClassVar[int] = 30  # 清理周期(分钟)，固定
@@ -503,11 +503,11 @@ class PluginConfig(BaseModel):
         return cats
 
     def get_vlm_categories(self) -> list[str]:
-        """给 VLM 的分类列表，不含 other。"""
+        """返回用于 VLM 标注的具体情绪分类。"""
         return [key for key in self.get_categories() if key != "other"]
 
     def closest_category(self, raw: str) -> str:
-        """把无法识别的分类名收到最接近的已有情绪类，不再使用 other。"""
+        """将模型返回的分类名映射到最接近的已有情绪类。"""
         known = self.get_vlm_categories()
         if not known:
             known = [key for key in self.DEFAULT_CATEGORIES if key != "other"]

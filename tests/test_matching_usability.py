@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from core.db.database_service import DatabaseService
-from core.processing.natural_emotion_analyzer import NaturalEmotionAnalyzer
+from core.processing.natural_emotion_analyzer import (
+    NaturalEmotionAnalyzer,
+    _EMOTION_ANALYSIS_DEFAULT_TEMPLATE,
+)
 from core.search.meme_scope_service import MemeScopeService
 from core.search.meme_selector import MemeSelector
 from tests.test_auto_emoji_flow import DummyEvent, _build_main
@@ -174,7 +177,7 @@ def test_existing_custom_emotion_template_is_preserved():
     analyzer.plugin_config = SimpleNamespace(emotion_analysis_prompt="my custom {llm_reply}")
     assert analyzer._load_emotion_analysis_template() == "my custom {llm_reply}"
     analyzer.plugin_config.emotion_analysis_prompt = ""
-    assert "发送者是助手" in analyzer._load_emotion_analysis_template()
+    assert analyzer._load_emotion_analysis_template() == _EMOTION_ANALYSIS_DEFAULT_TEMPLATE
 
 
 def test_basic_settings_hide_advanced_fields_without_removing_config_keys():

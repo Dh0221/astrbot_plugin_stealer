@@ -99,7 +99,7 @@
     "description": "自动随聊发送表情包",
     "type": "bool",
     "default": true,
-    "hint": "开启后 Bot 会在聊天中根据语境和发送概率主动搭配表情，无需用户要求。LLM 也可通过表情工具主动回应。"
+    "hint": "开启后 Bot 会在聊天中根据语境和发送概率主动搭配表情。LLM 也可通过表情工具主动回应。"
   },
   "show_advanced_settings": {
     "description": "显示高级选项",
@@ -371,7 +371,7 @@
   "custom_meme_classification_prompt": {
     "description": "VLM 分类提示词",
     "type": "text",
-    "default": "<role>\n你是中文互联网表情包理解与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n每个分类机会均等，不要把某一类当默认。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
+    "default": "<role>\n你是中文互联网表情包理解与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n根据表情包表达的语气和使用场景选择最贴切的分类。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
     "hint": "支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。",
     "condition": {
       "show_advanced_settings": true
@@ -380,7 +380,7 @@
   "custom_meme_classification_with_filter_prompt": {
     "description": "VLM 分类提示词（带审核）",
     "type": "text",
-    "default": "<role>\n你是中文互联网表情包审核与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<content_filter>\n先审核完整表情包。含裸露色情、暴力血腥、政治敏感或广告营销内容时，只输出：{\"approved\":false,\"reason\":\"审核不通过\"}\n通过审核后再执行下方标注任务。\n</content_filter>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n每个分类机会均等，不要把某一类当默认。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n审核通过时只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"approved\":true,\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n审核不通过时只输出前述 approved=false 对象。字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
+    "default": "<role>\n你是中文互联网表情包审核与检索标注器。\n</role>\n\n<input>\n输入可能是单张表情包，也可能是前置说明所描述的 GIF 九宫格时间序列。只分析原图内容；九宫格里重复出现的主体和文字只计一次。\n</input>\n\n<content_filter>\n先审核完整表情包。含裸露色情、暴力血腥、政治敏感或广告营销内容时，只输出：{\"approved\":false,\"reason\":\"审核不通过\"}\n通过审核后再执行下方标注任务。\n</content_filter>\n\n<categories>\ncategory 和 emotions 只能使用以下列表中的英文键名：\n{emotion_list}\n根据表情包表达的语气和使用场景选择最贴切的分类。\n</categories>\n\n<workflow>\n1. 先识别原图文字。按可见字符逐字转写，不翻译、不改写；没有文字则留空。\n2. 再观察主体、表情和动作。若输入是 GIF 九宫格，按时间顺序概括从开始到结束的动作或表情变化。\n3. 根据整个表情包最终传达的语气选择 category，并补充相关 emotions。\n4. 最后生成用于聊天检索的 description、tags 和 scenes。\n</workflow>\n\n<field_rules>\n- category：一个最贴切的英文分类键。\n- emotions：1~3 个英文分类键，按相关度排序，第一个必须与 category 相同。\n- overlay_text：原图文字，重复字幕只写一次；忽略 GIF 九宫格的帧序号、分隔线和人工背景。\n- description：40 字以内，写清主体、表情、动作；动图要体现动作变化，不要描述九宫格布局。\n- tags：0~3 个具体的画面、动作或网络梗关键词；没有可靠关键词就输出空数组。\n- scenes：1~2 句这张表情包适合回复的中文短句，写成对方在聊天中可能说的话；不要写画面说明。\n</field_rules>\n\n<output_format>\n审核通过时只输出一个合法 JSON 对象，不要输出解释、前后缀或 Markdown 代码块：\n{\"approved\":true,\"category\":\"confused\",\"emotions\":[\"confused\"],\"tags\":[],\"description\":\"卡通角色瞪大眼睛露出疑惑表情\",\"overlay_text\":\"啊？\",\"scenes\":[\"你在说什么\",\"这是什么意思\"]}\n审核不通过时只输出前述 approved=false 对象。字段必须齐全；字符串使用双引号，数组中不要输出空字符串。\n</output_format>",
     "hint": "开启内容审核时使用的 VLM 分类提示词。支持占位符：{emotion_list}（分类列表）。为空时使用默认提示词。",
     "condition": {
       "show_advanced_settings": true

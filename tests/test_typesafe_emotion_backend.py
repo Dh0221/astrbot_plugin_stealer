@@ -13,6 +13,15 @@ from core.processing.natural_emotion_analyzer import EmotionQuery
 from core.search.jev_selector import JevSelector, JevSelectionError
 from core.search.meme_selector import MemeSelector
 from core.search.meme_smart_select_service import MemeSmartSelectService
+from tests.test_auto_emoji_flow import DummyEvent
+
+
+def llm_event(engine, text):
+    event = DummyEvent(text)
+    state = engine.emoji_turn_state(event)
+    state.set_llm_reply(text)
+    state.mark_active_sent = Mock()
+    return event
 
 
 def config(**kwargs):
@@ -122,8 +131,7 @@ async def test_checkbox_routing_matrix(master, jev, route):
     engine.get_meme_send_delay = lambda *args: 0
     engine.try_send_emoji = AsyncMock(return_value=True)
     engine.mark_auto_emoji_sent = AsyncMock()
-    engine.emoji_turn_state = lambda event: SimpleNamespace(mark_active_sent=Mock())
-    event = SimpleNamespace(get_result=lambda: None)
+    event = llm_event(engine, "回复原文")
     await engine.async_analyze_and_send_emoji(event, "回复原文", [], user_message="用户")
     assert analyzer.analyze_for_reply.await_count == (route == "llm")
     assert selector.select_emoji_with_jev.await_count == (route == "jev")
@@ -361,9 +369,7 @@ async def test_sender_routes_preserve_llm_and_abstention(mode, result, fail, exp
     engine.get_meme_send_delay = lambda *a: 0
     engine.try_send_emoji = AsyncMock(return_value=True)
     engine.mark_auto_emoji_sent = AsyncMock()
-    state = SimpleNamespace(mark_active_sent=Mock())
-    engine.emoji_turn_state = lambda event: state
-    event = SimpleNamespace(get_result=lambda: None)
+    event = llm_event(engine, "这是一条完整回复")
     await engine.async_analyze_and_send_emoji(
         event, "这是一条完整回复", [], user_message="用户问题"
     )
@@ -410,9 +416,7 @@ async def test_rank_http_decision_to_sender(tmp_path, monkeypatch, choice):
     engine = MemeSenderEngine(plugin)
     engine.get_meme_send_delay = lambda *args: 0
     engine.mark_auto_emoji_sent = AsyncMock()
-    state = SimpleNamespace(mark_active_sent=Mock())
-    engine.emoji_turn_state = lambda event: state
-    event = SimpleNamespace(get_result=lambda: None)
+    event = llm_event(engine, "终于下班了")
     await engine.async_analyze_and_send_emoji(event, "终于下班了", [], user_message="下班啦")
     assert len(captured["json"]["questions"]["meme"]["criteria"]) == 11
     plugin.emotion_analyzer.analyze_for_reply.assert_not_awaited()

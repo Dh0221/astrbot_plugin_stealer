@@ -22,14 +22,14 @@ from ..search.text_similarity import calculate_hybrid_similarity, _has_negation_
 _EMOTION_ABSTAIN = object()
 
 _LEGACY_EMOTION_TEMPLATE_HASH = '1914107e8c9b676649a0e92af223db633a7d56e0468dac44148df009e14d4201'
-_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """你根据当前对话，为助手自然表达情绪、接梗或回应准备表情包检索词。发送者是助手，接收者是当前用户。无需用户要求发表情。
+_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """根据本轮对话，提炼助手用于表达情绪、接梗或回应的表情包检索词。表情由助手发给当前用户。
 可选情绪分类：{emotion_list}
 
 任务：
 1. 综合用户消息与助手回复理解这轮交流：共鸣、接梗、调侃、自嘲、安慰、感谢、关心、催促或抗议。
-2. 用户消息帮助判断语境，不要把用户的心情直接当成助手的心情。区分安慰与嘲笑、关心式催促与敌意反击。
-3. query 用一条简短中文检索句表达助手想怎样回应，保留关键台词与否定。仅有分类名时信息不足；不要编造画面或角色。
-4. emotions 从给定分类选 0~3 个弱先验。每个分类机会均等，不要把某一类当默认。
+2. 以助手回复的立场和语气为准，结合用户消息判断语境，区分安慰与嘲笑、关心式催促与敌意反击。
+3. query 用一条简短中文检索句表达助手想怎样回应，包含具体台词、语气或场景，并保留原句中的否定含义。画面和角色以对话中明确提到的内容为准。
+4. emotions 从给定分类中按相关度选 0~3 项，作为检索的辅助线索。
 
 用户消息：{user_message}
 助手回复：{llm_reply}
@@ -41,7 +41,7 @@ _EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """你根据当前对话，为助手自然�
 
 @dataclass
 class EmotionQuery:
-    """查询改写结果：检索句 + 情绪先验。分类只作加分，不再是唯一键。"""
+    """查询改写结果：检索句和用于辅助评分的情绪先验。"""
 
     should_send: bool = True
     search_query: str = ""
@@ -400,7 +400,7 @@ class NaturalEmotionAnalyzer:
 
         data = self._extract_json_object(stripped)
         if isinstance(data, dict):
-            # 旧输出可能带 should_send，但小模型不再负责“是否发表情”，这里忽略该字段。
+            # 提取检索句和情绪先验；发送时机由调用方控制。
             query = str(data.get("query") or data.get("search_query") or "").strip()
             raw_emotions = data.get("emotions") or data.get("emotion") or []
             if isinstance(raw_emotions, str):

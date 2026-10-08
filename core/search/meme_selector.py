@@ -15,6 +15,7 @@ from .meme_scope_service import MemeScopeService
 from .meme_smart_select_service import MemeSmartSelectService
 from .jev_selector import JevSelector
 from .search_features import entry_category, normalize_category
+from .punctuation_emotion import punctuation_emotion_weights
 
 
 class MemeSelector:
@@ -50,6 +51,7 @@ class MemeSelector:
             ranked = await self._smart_select_service._rank_emoji_candidates(
                 "", f"{user_message[:2000]}\n{text[:2000]}", event=event,
                 deterministic=True,
+                emotion_weights=punctuation_emotion_weights(text),
             )
             idx = await self._candidate_index([item[0] for item in ranked])
             candidates = []
@@ -154,6 +156,7 @@ class MemeSelector:
         context_text: str = "",
         event: AstrMessageEvent | None = None,
         extra_categories: list[str] | None = None,
+        *, emotion_weights: dict[str, float] | None = None,
     ) -> str | None:
         """选择表情包（智能或随机）。"""
         async with self._selection_lock:
@@ -175,6 +178,7 @@ class MemeSelector:
                     context_text,
                     candidate_categories=candidate_categories,
                     event=event,
+                    emotion_weights=emotion_weights,
                 )
             for candidate_category in candidate_categories:
                 random_path = await asyncio.to_thread(
@@ -321,9 +325,17 @@ class MemeSelector:
         event = unwrap_event(event)
         try:
             # active_sent means an emoji was actually sent, not merely auto-claimed.
-            if self.plugin._emoji_sender_engine.emoji_turn_state(event).is_active_sent():
+            engine = self.plugin._emoji_sender_engine
+            state = engine.emoji_turn_state(event)
+            if state.is_active_sent():
                 logger.debug("[Stealer] 已主动发送过表情包，跳过自动发送")
                 return False
+
+            if state.is_auto_claimed():
+                reply = state.get_llm_reply()
+                if reply is None or not engine.is_auto_emoji_source_current(event, reply):
+                    logger.debug("[Stealer] 选图完成后回复来源已变化，跳过自动发送")
+                    return False
 
             if not self._check_group_allowed(event):
                 return False
@@ -348,6 +360,7 @@ class MemeSelector:
         event: AstrMessageEvent,
         emotions: list[str],
         cleaned_text: str,
+        *, emotion_weights: dict[str, float] | None = None,
     ) -> bool:
         """尝试发送表情包。多个情绪作为先验一次召回，不再按桶逐个试。
 
@@ -369,6 +382,7 @@ class MemeSelector:
             cleaned_text,
             event=event,
             extra_categories=priors,
+            emotion_weights=emotion_weights,
         )
         if emoji_path:
             sent = await self.send_emoji_with_text(event, emoji_path, cleaned_text)

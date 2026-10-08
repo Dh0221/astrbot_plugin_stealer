@@ -229,9 +229,6 @@ class CommandHandler:
                 f"总表情: {stats['total_emojis']} | 有标签: {stats['total_with_tags']} | "
                 f"无标签: {stats['zero_tag_count']}"
             )
-            if stats["zero_tag_count"]:
-                lines.append("⚠️ 无标签的表情无法被关键词检索，建议在 WebUI 补充标签")
-
             lines.append(f"\n📈 高频标签 Top {top_n}:")
             if stats["top_tags"]:
                 for i, item in enumerate(stats["top_tags"], 1):

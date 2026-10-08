@@ -147,7 +147,7 @@ class MemeSearchToolWorkflow:
             yield f"搜索出错：{e}"
 
     async def _send_meme_impl(self, event: AstrMessageEvent, emoji_id: int):
-        """发送 search_meme 返回的候选表情包；不要猜测或直接传递文件路径。
+        """按本次 search_meme 返回的候选编号发送表情包。
 
         选择原则：核对台词与适合回应的场景，保持与你准备发给用户的回复立场一致。
 

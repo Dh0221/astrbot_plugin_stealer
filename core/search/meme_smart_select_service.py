@@ -198,10 +198,12 @@ class MemeSmartSelectService:
         self, category: str, context_text: str,
         candidate_categories: list[str] | None = None,
         event: AstrMessageEvent | None = None,
+        *, emotion_weights: dict[str, float] | None = None,
     ) -> str | None:
         """按相关度选图，只有接近同分的候选参与随机选择。"""
         candidates = await self._rank_emoji_candidates(
             category, context_text, candidate_categories, event,
+            emotion_weights=emotion_weights,
         )
         if not candidates:
             return None
@@ -238,6 +240,7 @@ class MemeSmartSelectService:
         idx: dict | None = None,
         require_files: bool | None = None,
         penalize_recent: bool = True,
+        emotion_weights: dict[str, float] | None = None,
     ) -> list[tuple]:
         """召回并评分；JEV 模式过滤文件并禁用随机加分和提前停止。"""
         try:
@@ -256,7 +259,7 @@ class MemeSmartSelectService:
             query_token_set = set(query_tokens)
 
             recalled_paths, embedding_paths = await self._recall_candidate_paths(
-                idx, context_text, event, allowed_categories,
+                idx, context_text, event, allowed_categories | set(emotion_weights or {}),
                 require_files=deterministic if require_files is None else require_files,
             )
             if not recalled_paths:
@@ -358,12 +361,17 @@ class MemeSmartSelectService:
                 if base_score < 0.15:
                     continue
 
+                punctuation_bonus = max(
+                    ((emotion_weights or {}).get(emotion, 0.0)
+                     for emotion in entry_emotions | {item_category}), default=0.0,
+                )
+
                 canon_path = canonicalize_path(file_path)
                 history_penalty = self._selection_strategy._calculate_recent_penalty(item_category, canon_path) if penalize_recent else 0.0
 
                 final_score = max(
                     0.0, base_score + category_bonus + use_count_bonus
-                    + favorite_bonus - history_penalty,
+                    + favorite_bonus + punctuation_bonus - history_penalty,
                 )
                 if final_score > 0.1:
                     candidates.append(

@@ -738,7 +738,7 @@ class ImageProcessorService:
         normalized_desc = str(desc or "").strip()
         normalized_scenes = normalize_label_list(scenes or [], allow_duplicates=True)
 
-        # 兜底描述：用分类信息中的中文名，而不是干巴巴的"LLM手动入库"
+        # 描述缺失时使用分类的中文显示名。
         if not normalized_desc:
             cat_info = self.plugin_config.category_info or {}
             cat_meta = cat_info.get(category, {}) if isinstance(cat_info, dict) else {}

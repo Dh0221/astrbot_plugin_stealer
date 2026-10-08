@@ -7,9 +7,11 @@ from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api.message_components import Image as MessageImage
 
 from ..processing.natural_emotion_analyzer import EmotionQuery
 from ..search.jev_selector import JevSelector, JevSelectionError
+from ..search.punctuation_emotion import punctuation_emotion_weights
 from .event_context import get_event_session_key
 
 
@@ -23,6 +25,17 @@ class _MemeTurnState:
         self._auto_allowed = False
         self._auto_reason = ""
         self._auto_send_meme_claimed = False
+        self._llm_reply: str | None = None
+
+    def set_llm_reply(self, text: str) -> None:
+        """记录本轮用于自动配图的 LLM 回复。"""
+        self._llm_reply = text
+
+    def get_llm_reply(self) -> str | None:
+        return self._llm_reply
+
+    def invalidate_llm_reply(self) -> None:
+        self._llm_reply = None
 
     def mark_active_sent(self) -> None:
         """标记当前回合已主动发送过表情包。"""
@@ -79,6 +92,7 @@ class _MemeTurnState:
         self._auto_allowed = False
         self._auto_reason = ""
         self._auto_send_meme_claimed = False
+        self._llm_reply = None
 
 
 class MemeSenderEngine:
@@ -158,6 +172,48 @@ class MemeSenderEngine:
 
     # --- 决策检查 ---
 
+    @staticmethod
+    def is_command_event(event: AstrMessageEvent) -> bool:
+        """使用框架解析的命令参数映射识别已触发的插件命令。"""
+        getter = getattr(event, "get_extra", None)
+        params = getter("handlers_parsed_params") if callable(getter) else None
+        return isinstance(params, dict) and bool(params)
+
+    @staticmethod
+    def is_llm_reply_result(result: Any) -> bool:
+        """接受普通 LLM 回复及框架标记的流式回复。"""
+        checker = getattr(result, "is_llm_result", None)
+        if callable(checker) and checker():
+            return True
+        content_type = getattr(result, "result_content_type", None)
+        name = getattr(content_type, "name", str(content_type).rsplit(".", 1)[-1])
+        return name in {"STREAMING_RESULT", "STREAMING_FINISH"}
+
+    def invalidate_auto_emoji_source(self, event: AstrMessageEvent) -> None:
+        """取消本轮已失去 LLM 来源的配图任务。"""
+        state = self.emoji_turn_state(event)
+        state.invalidate_llm_reply()
+        if state.is_auto_claimed():
+            self.cancel_pending_auto_emoji(event, reason="reply_source_changed")
+
+    def is_auto_emoji_source_current(self, event: AstrMessageEvent, text: str) -> bool:
+        """在异步分析和发送边界复核本轮回复的来源。"""
+        state = self.emoji_turn_state(event)
+        if state.get_llm_reply() != text or self.is_command_event(event):
+            return False
+        result = event.get_result()
+        # 框架发送完主回复后会清空结果；本轮已记录的来源继续有效。
+        if result is None:
+            return True
+        if not self.is_llm_reply_result(result):
+            state.invalidate_llm_reply()
+            return False
+        if any(isinstance(comp, MessageImage) for comp in getattr(result, "chain", [])):
+            return False
+        content_type = getattr(result, "result_content_type", None)
+        name = getattr(content_type, "name", str(content_type).rsplit(".", 1)[-1])
+        return bool(result.get_plain_text().strip()) or name == "STREAMING_RESULT"
+
     def should_skip_auto_emoji_by_gate(self, text: str) -> bool:
         """根据文本内容判断是否跳过自动发送。"""
         if not text:
@@ -186,9 +242,6 @@ class MemeSenderEngine:
             r"\b(?:traceback|exception|error\s*[:：]|http\s*[45]\d\d)\b",
         )
         if any(re.search(pattern, normalized, re.IGNORECASE) for pattern in serious_patterns):
-            return True
-        question_marks = normalized.count("?") + normalized.count("？")
-        if question_marks >= 2:
             return True
         return False
 
@@ -274,14 +327,16 @@ class MemeSenderEngine:
     # --- 发送 ---
 
     async def try_send_emoji(
-        self, event: AstrMessageEvent, emotions: list[str], cleaned_text: str
+        self, event: AstrMessageEvent, emotions: list[str], cleaned_text: str,
+        *, emotion_weights: dict[str, float] | None = None,
     ) -> bool:
         """尝试发送表情包（委托给 MemeSelector）。"""
         try:
             selector = getattr(self.plugin, "meme_selector", None)
             if selector is None:
                 return False
-            return await selector.try_send_emoji(event, emotions, cleaned_text)
+            options = {"emotion_weights": emotion_weights} if emotion_weights else {}
+            return await selector.try_send_emoji(event, emotions, cleaned_text, **options)
         except Exception as e:
             logger.warning(f"[MemeSenderEngine] 尝试发送表情包失败: {e}")
             return False
@@ -327,6 +382,8 @@ class MemeSenderEngine:
         本方法成功发送后再标记 mark_active_sent 以记录实际发送时间。
         """
         try:
+            if not self.is_auto_emoji_source_current(event, text):
+                return
             task_start = asyncio.get_event_loop().time()
             final_emotions = list(emotions or [])
 
@@ -365,21 +422,23 @@ class MemeSenderEngine:
             if not final_emotions and not search_text:
                 return
 
-            result = event.get_result()
-            if result and not result.get_plain_text().strip():
-                content_type = str(getattr(result, "result_content_type", "") or "").lower()
-                if "streaming" not in content_type:
-                    logger.debug("[MemeSenderEngine] 主回复已被置空，跳过自动表情")
-                    return
+            if not self.is_auto_emoji_source_current(event, text):
+                return
 
             delay = self.get_meme_send_delay(text, task_start)
             if delay > 0:
                 await asyncio.sleep(delay)
 
+            if not self.is_auto_emoji_source_current(event, text):
+                logger.debug("[MemeSenderEngine] 回复来源已变化，跳过自动表情")
+                return
+
             if use_jev:
                 sent = await self.plugin.meme_selector.send_jev_selection(event, jev_path, text)
             else:
-                sent = await self.try_send_emoji(event, final_emotions, search_text or text)
+                weights = punctuation_emotion_weights(text, final_emotions)
+                options = {"emotion_weights": weights} if weights else {}
+                sent = await self.try_send_emoji(event, final_emotions, search_text or text, **options)
             if sent:
                 await self.mark_auto_emoji_sent(event)
                 self.emoji_turn_state(event).mark_active_sent()

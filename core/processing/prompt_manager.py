@@ -9,14 +9,14 @@ class PromptManager:
     _PROMPT_PLACEHOLDER = "{emotion_list}"
 
     _FALLBACK_PROMPT = (
-        "分析表情包：从 `{emotion_list}` 中选择情绪分类，每个分类机会均等。"
+        "分析表情包：根据图片表达的语气，从 `{emotion_list}` 中选择最贴切的情绪分类。"
         '返回JSON格式：{"category": "分类名", "tags": [], '
         '"description": "画面描述", "overlay_text": "", "scenes": []}'
         "tags 没有则 []。"
     )
     _FALLBACK_FILTER_PROMPT = (
         '审核图片是否含不当内容，不当则返回{"approved": false, "reason": "审核不通过"}。'
-        "否则从 `{emotion_list}` 中选择情绪分类，每个分类机会均等。"
+        "否则根据图片表达的语气，从 `{emotion_list}` 中选择最贴切的情绪分类。"
         '返回JSON格式：{"approved": true, "category": "分类名", "tags": [], '
         '"description": "画面描述", "overlay_text": "", "scenes": []}'
         "tags 没有则 []。"

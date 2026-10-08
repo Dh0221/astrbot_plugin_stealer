@@ -43,7 +43,7 @@
         },
         "auto_send_meme": {
             "description": "Auto-send stickers in chat",
-            "hint": "Automatically add a meme when the context and send probability fit. The LLM can also use meme tools proactively without an explicit request."
+            "hint": "Automatically add a meme when the context and send probability fit. The LLM can also use meme tools proactively."
         },
         "auto_meme_cancel_on_new_message": {
             "description": "Cancel pending auto-send on new message",
@@ -587,7 +587,7 @@
                 "review": "Check the content",
                 "review_hint": "Approve collected images, check the overlay text and incoming messages they suit, then assign characters.",
                 "chat": "Chat naturally",
-                "chat_hint": "The bot can express emotion, share a joke or react with a meme during ordinary conversation. No explicit request is needed; unsuitable candidates are skipped.",
+                "chat_hint": "The bot can express emotion, share a joke or react with a meme during ordinary conversation. It chooses images that fit the conversation.",
                 "pending_hint": "Pending images are not sent. If an approved image matches poorly, preview a new analysis and confirm before saving.",
                 "upload": "Upload and analyze",
                 "pending": "Review images",

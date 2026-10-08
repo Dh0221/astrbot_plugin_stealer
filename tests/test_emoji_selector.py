@@ -381,6 +381,9 @@ class _DummyTurnState:
     def is_active_sent(self):
         return False
 
+    def is_auto_claimed(self):
+        return False
+
 
 class _DummyResult:
     def __init__(self):
