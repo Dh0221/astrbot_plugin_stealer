@@ -77,6 +77,18 @@
             "description": "Emotion analysis model",
             "hint": "Leave blank to use the current session model. A small-parameter model is sufficient; a lightweight free model is recommended to reduce latency and cost."
         },
+        "enable_jev": {
+            "description": "Enable JEV selection",
+            "hint": "Requires \"Smart keyword extraction\" above. When disabled, the traditional LLM path is used; when enabled, JEV picks from up to 10 pre-filtered candidates. The official endpoint is used by default, and a trusted API Base URL can be set below. The model is fixed to jev-latest. Sends candidate metadata, roughly the last 3 turns, and the current exchange; a none pick sends nothing, and a missing key or a failed call falls back to the LLM."
+        },
+        "typesafe_api_key": {
+            "description": "TypeSafe API Key",
+            "hint": "Create one at console.typesafe.ai. Used when both \"Smart keyword extraction\" and \"Enable JEV selection\" are on; leave blank to fall back to the traditional LLM."
+        },
+        "typesafe_api_base_url": {
+            "description": "TypeSafe API Base URL",
+            "hint": "Uses the official TypeSafe API by default. Usually only the domain is needed; a value ending in /v1 or a full /v1/systemone address also works. The API key is sent to this address, so configure a trusted service only."
+        },
         "vision_provider_id": {
             "description": "Vision model",
             "hint": "Used for image classification. Leave blank to auto-use AstrBot's global default_image_caption_provider_id."

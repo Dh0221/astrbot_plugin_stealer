@@ -77,6 +77,18 @@
             "description": "语境理解模型（可留空）",
             "hint": "留空使用当前会话模型。可选择响应快的文本模型；高级设置中的 JEV 可替代这一步。"
         },
+        "enable_jev": {
+            "description": "启用 JEV 选图",
+            "hint": "需同时开启上方“用模型理解对话语境”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。"
+        },
+        "typesafe_api_key": {
+            "description": "TypeSafe API Key",
+            "hint": "在 console.typesafe.ai 创建。同时勾选“用模型理解对话语境”和“启用 JEV 选图”后使用；留空时回退传统 LLM。"
+        },
+        "typesafe_api_base_url": {
+            "description": "TypeSafe API Base URL",
+            "hint": "默认使用 TypeSafe 官方 API。通常只填写到域名；也兼容以 /v1 结尾或完整的 /v1/systemone 地址。API Key 会发送到此地址，请仅配置可信服务。"
+        },
         "vision_provider_id": {
             "description": "视觉模型",
             "hint": "用于图片分类。留空则自动使用 AstrBot 全局配置的图片描述模型（default_image_caption_provider_id）。"
