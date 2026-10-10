@@ -176,9 +176,9 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 
 | Setting | Default | Description |
 |:---|:---|:---|
-| **Smart keyword extraction** | `true` | Use a lightweight model for search terms and emotion priors; disabled mode searches the reply text directly |
-| **Emotion analysis model** | `""` | Leave blank to use the current session model |
-| **Emotion analysis prompt** | `""` | Leave blank for the bundled template; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
+| **Understand conversation context with a model** | `true` | Extract sticker usage scenes from your reply and the user message; if no model is set, the current session model is used. Adds model calls; disabled mode uses local matching |
+| **Context understanding model (optional)** | `""` | Leave blank to use the current session model; a fast text model is enough, and JEV in advanced settings can replace this step |
+| **Emotion analysis prompt** | `""` | Leave blank for the bundled context prompt; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
 
 </details>
 

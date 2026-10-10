@@ -70,20 +70,20 @@
             "hint": "When enabled, uses composite scoring (diversity + relevance + similarity) to pick the best emoji. When disabled, picks randomly (still avoids short-term repeats)."
         },
         "enable_natural_emotion_analysis": {
-            "description": "Smart keyword extraction",
-            "hint": "When enabled, a lightweight model extracts search keywords and emotion priors from the AI reply to improve sticker matching. Whether to send is still controlled by the existing probability/cooldown gates. When disabled, the reply text is used directly."
+            "description": "Understand conversation context with a model",
+            "hint": "When enabled, sticker usage scenes are extracted from your reply and the user message; if no model is set, the current session model is used. Adds model calls. When disabled, local matching is used."
         },
         "emotion_analysis_provider_id": {
-            "description": "Emotion analysis model",
-            "hint": "Leave blank to use the current session model. A small-parameter model is sufficient; a lightweight free model is recommended to reduce latency and cost."
+            "description": "Context understanding model (optional)",
+            "hint": "Leave blank to use the current session model. A fast text model is enough; JEV in advanced settings can replace this step."
         },
         "enable_jev": {
             "description": "Enable JEV selection",
-            "hint": "Requires \"Smart keyword extraction\" above. When disabled, the traditional LLM path is used; when enabled, JEV picks from up to 10 pre-filtered candidates. The official endpoint is used by default, and a trusted API Base URL can be set below. The model is fixed to jev-latest. Sends candidate metadata, roughly the last 3 turns, and the current exchange; a none pick sends nothing, and a missing key or a failed call falls back to the LLM."
+            "hint": "Requires \"Understand conversation context with a model\" above. When disabled, the traditional LLM path is used; when enabled, JEV picks from up to 10 pre-filtered candidates. The official endpoint is used by default, and a trusted API Base URL can be set below. The model is fixed to jev-latest. Sends candidate metadata, roughly the last 3 turns, and the current exchange; a none pick sends nothing, and a missing key or a failed call falls back to the LLM."
         },
         "typesafe_api_key": {
             "description": "TypeSafe API Key",
-            "hint": "Create one at console.typesafe.ai. Used when both \"Smart keyword extraction\" and \"Enable JEV selection\" are on; leave blank to fall back to the traditional LLM."
+            "hint": "Create one at console.typesafe.ai. Used when both \"Understand conversation context with a model\" and \"Enable JEV selection\" are on; leave blank to fall back to the traditional LLM."
         },
         "typesafe_api_base_url": {
             "description": "TypeSafe API Base URL",
@@ -199,7 +199,7 @@
         },
         "emotion_analysis_prompt": {
             "description": "Emotion analysis prompt",
-            "hint": "Generates a search query and 1-3 emotion priors. Placeholders: {emotion_list}, {llm_reply}, {user_message}. Leave blank to use the default prompt. Legacy single-label output is still accepted."
+            "hint": "Leave blank to use the bundled context prompt. The query keeps the assistant's stance, interaction intent and key lines; custom content still takes effect. Placeholders: {emotion_list}, {llm_reply}, {user_message}."
         },
         "sim_weight_preset": {
             "description": "Text-distance fusion preset",
