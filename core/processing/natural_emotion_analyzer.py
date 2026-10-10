@@ -348,7 +348,7 @@ class NaturalEmotionAnalyzer:
                 logger.error(
                     f"[情绪分析] 模型提供商错误: {e}\n"
                     f"  配置的provider_id: {provider_id}\n"
-                    f"  提示: 请检查插件配置中的'情绪分析专用模型'是否有效，"
+                    f"  提示: 请检查插件配置中的'语境理解模型'是否有效，"
                     f"  或尝试清空该配置使用默认模型"
                 )
             else:
@@ -357,7 +357,7 @@ class NaturalEmotionAnalyzer:
 
     async def _get_text_provider(self, event: AstrMessageEvent) -> str | None:
         """获取文本模型提供商ID"""
-        # 1. 优先使用插件配置的情绪分析专用模型
+        # 1. 优先使用插件配置的语境理解模型
         configured_provider = self.plugin.plugin_config.emotion_analysis_provider_id
         if configured_provider:
             logger.debug(f"[情绪分析] 尝试使用配置的提供商: {configured_provider}")

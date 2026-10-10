@@ -212,7 +212,7 @@
     "description": "启用 JEV 选图",
     "type": "bool",
     "default": false,
-    "hint": "需同时开启“小模型分析”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。",
+    "hint": "需同时开启上方“用模型理解对话语境”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。",
     "condition": {
       "show_advanced_settings": true,
       "enable_natural_emotion_analysis": true
@@ -222,7 +222,7 @@
     "description": "TypeSafe API Key",
     "type": "string",
     "default": "",
-    "hint": "在 console.typesafe.ai 创建。同时勾选“小模型分析”和“JEV 选图”后使用；留空时回退传统 LLM。",
+    "hint": "在 console.typesafe.ai 创建。同时勾选“用模型理解对话语境”和“启用 JEV 选图”后使用；留空时回退传统 LLM。",
     "condition": {
       "enable_jev": true
     }
