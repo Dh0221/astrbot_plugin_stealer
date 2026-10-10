@@ -41,6 +41,10 @@
             "description": "Content moderation",
             "hint": "Uses VLM to review image content and block inappropriate images. May increase processing time per image."
         },
+        "qqofficial_steal_mode": {
+            "description": "QQ_Official collection mode",
+            "hint": "Large stickers and sticker packs on QQ_Official are plain image attachments without OneBot's sub_type mark. By default only images carrying the sticker CDN signature are collected (such as store stickers); collecting all images or only GIFs is also available."
+        },
         "auto_send_meme": {
             "description": "Auto-send stickers in chat",
             "hint": "Automatically add a meme when the context and send probability fit. The LLM can also use meme tools proactively."
@@ -68,6 +72,10 @@
         "smart_meme_selection": {
             "description": "Smart emoji selection",
             "hint": "When enabled, uses composite scoring (diversity + relevance + similarity) to pick the best emoji. When disabled, picks randomly (still avoids short-term repeats)."
+        },
+        "_emotion_section": {
+            "description": "Emotion Recognition",
+            "hint": ""
         },
         "enable_natural_emotion_analysis": {
             "description": "Understand conversation context with a model",
@@ -120,6 +128,10 @@
         "max_reg_num": {
             "description": "Maximum emoji count",
             "hint": "Storage limit. When the limit is reached, old emoji are automatically removed per the cleanup strategy."
+        },
+        "eviction_usage_weight": {
+            "description": "Eviction score: low-usage weight",
+            "hint": "Default 0.7; the entry-time weight is 1 minus this value. Both scores are normalised and weighted: rarely used and oldest entries are evicted first. 0 evicts by age only, 1 by least usage only."
         },
         "steal_pool_capacity": {
             "description": "Pending pool capacity",
@@ -184,10 +196,6 @@
         "webui_theme": {
             "description": "Default WebUI theme",
             "hint": "Theme used when opening the sticker manager. Picking a theme in the page is remembered and takes priority over this setting."
-        },
-        "_advanced_section": {
-            "description": "Advanced Settings",
-            "hint": ""
         },
         "custom_meme_classification_prompt": {
             "description": "VLM classification prompt",

@@ -41,6 +41,10 @@
             "description": "内容审核",
             "hint": "开启后使用 VLM 审核图片内容，过滤不当图片。开启后会增加单张图片的处理时间。"
         },
+        "qqofficial_steal_mode": {
+            "description": "表情收录模式（QQ_Official）",
+            "hint": "QQ_Official 平台的大表情/表情包是普通图片附件，无 OneBot 的 sub_type 标记。默认仅收录带表情 CDN 特征的图片（如商城表情）；可选全部收录，或仅收录 GIF。"
+        },
         "auto_send_meme": {
             "description": "自动随聊发送表情包",
             "hint": "开启后 Bot 会在聊天中根据语境和发送概率主动搭配表情。LLM 也可通过表情工具主动回应。"
@@ -68,6 +72,10 @@
         "smart_meme_selection": {
             "description": "智能表情包选择",
             "hint": "开启后使用综合评分（多样性 + 匹配度 + 相似度）选出最合适的表情包。关闭则随机选择（仍会避免短期重复）。"
+        },
+        "_emotion_section": {
+            "description": "=== 情绪识别 ===",
+            "hint": ""
         },
         "enable_natural_emotion_analysis": {
             "description": "用模型理解对话语境",
@@ -120,6 +128,10 @@
         "max_reg_num": {
             "description": "通用表情库自动淘汰上限",
             "hint": "仅计算通用库中未收藏、未指定角色的普通表情；收藏、角色表情及受保护外部导入不占额度。超限按使用次数和入库时间加权淘汰。"
+        },
+        "eviction_usage_weight": {
+            "description": "淘汰评分：低使用次数权重",
+            "hint": "默认 0.7，入库时间权重为 1 减此值。两项归一化后加权，使用越少、入库越旧越优先淘汰；0 仅按最旧，1 仅按使用最少。"
         },
         "steal_pool_capacity": {
             "description": "待审核池容量上限",
@@ -184,10 +196,6 @@
         "webui_theme": {
             "description": "WebUI 默认主题",
             "hint": "页面尚未保存主题选择时使用该默认值；在「表情管理」中切换后，将持续使用页面保存的主题。"
-        },
-        "_advanced_section": {
-            "description": "高级配置",
-            "hint": ""
         },
         "custom_meme_classification_prompt": {
             "description": "VLM 分类提示词",
