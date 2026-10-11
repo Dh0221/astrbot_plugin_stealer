@@ -31,7 +31,8 @@
         },
         "steal_mode": {
             "description": "偷图模式",
-            "hint": "概率模式：每次收到图片时按设定概率决定是否偷取。冷却模式：两次偷取之间必须间隔指定秒数。"
+            "hint": "概率模式：每次收到图片时按设定概率决定是否偷取。冷却模式：两次偷取之间必须间隔指定秒数。",
+            "labels": ["概率模式", "冷却模式"]
         },
         "steal_chance": {
             "description": "偷图概率",
@@ -40,6 +41,11 @@
         "content_filtration": {
             "description": "内容审核",
             "hint": "开启后使用 VLM 审核图片内容，过滤不当图片。开启后会增加单张图片的处理时间。"
+        },
+        "qqofficial_steal_mode": {
+            "description": "表情收录模式（QQ_Official）",
+            "hint": "QQ_Official 平台的大表情/表情包是普通图片附件，无 OneBot 的 sub_type 标记。默认仅收录带表情 CDN 特征的图片（如商城表情）；可选全部收录，或仅收录 GIF。",
+            "labels": ["所有图片按表情收录", "仅收录表情 CDN 特征", "仅收录 GIF 格式"]
         },
         "auto_send_meme": {
             "description": "自动随聊发送表情包",
@@ -69,6 +75,10 @@
             "description": "智能表情包选择",
             "hint": "开启后使用综合评分（多样性 + 匹配度 + 相似度）选出最合适的表情包。关闭则随机选择（仍会避免短期重复）。"
         },
+        "_emotion_section": {
+            "description": "=== 情绪识别 ===",
+            "hint": ""
+        },
         "enable_natural_emotion_analysis": {
             "description": "用模型理解对话语境",
             "hint": "开启后根据你的回复与用户消息提取表情包使用场景；留空模型时跟随当前会话。会增加模型调用。关闭后使用本地匹配。"
@@ -76,6 +86,18 @@
         "emotion_analysis_provider_id": {
             "description": "语境理解模型（可留空）",
             "hint": "留空使用当前会话模型。可选择响应快的文本模型；高级设置中的 JEV 可替代这一步。"
+        },
+        "enable_jev": {
+            "description": "启用 JEV 选图",
+            "hint": "需同时开启上方“用模型理解对话语境”。未勾选时使用传统 LLM；勾选后由 JEV 从最多 10 张粗筛候选中选图。默认使用官方接口，也可在下方配置可信的 API Base URL；模型固定为 jev-latest。会发送候选元数据、最近约 3 轮文本及本轮对话；选择 none 时不发送，缺少 key 或调用失败时回退 LLM。"
+        },
+        "typesafe_api_key": {
+            "description": "TypeSafe API Key",
+            "hint": "在 console.typesafe.ai 创建。同时勾选“用模型理解对话语境”和“启用 JEV 选图”后使用；留空时回退传统 LLM。"
+        },
+        "typesafe_api_base_url": {
+            "description": "TypeSafe API Base URL",
+            "hint": "默认使用 TypeSafe 官方 API。通常只填写到域名；也兼容以 /v1 结尾或完整的 /v1/systemone 地址。API Key 会发送到此地址，请仅配置可信服务。"
         },
         "vision_provider_id": {
             "description": "视觉模型",
@@ -91,7 +113,8 @@
         },
         "send_target_filter_mode": {
             "description": "发表情名单优先级",
-            "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。"
+            "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。",
+            "labels": ["白名单优先", "黑名单优先"]
         },
         "steal_target_whitelist": {
             "description": "偷表情白名单",
@@ -103,11 +126,16 @@
         },
         "steal_target_filter_mode": {
             "description": "偷表情名单优先级",
-            "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。"
+            "hint": "白名单优先：白名单命中时允许，否则再查黑名单。黑名单优先：黑名单命中时拒绝，否则再查白名单。",
+            "labels": ["白名单优先", "黑名单优先"]
         },
         "max_reg_num": {
             "description": "通用表情库自动淘汰上限",
             "hint": "仅计算通用库中未收藏、未指定角色的普通表情；收藏、角色表情及受保护外部导入不占额度。超限按使用次数和入库时间加权淘汰。"
+        },
+        "eviction_usage_weight": {
+            "description": "淘汰评分：低使用次数权重",
+            "hint": "默认 0.7，入库时间权重为 1 减此值。两项归一化后加权，使用越少、入库越旧越优先淘汰；0 仅按最旧，1 仅按使用最少。"
         },
         "steal_pool_capacity": {
             "description": "待审核池容量上限",
@@ -171,11 +199,8 @@
         },
         "webui_theme": {
             "description": "WebUI 默认主题",
-            "hint": "页面尚未保存主题选择时使用该默认值；在「表情管理」中切换后，将持续使用页面保存的主题。"
-        },
-        "_advanced_section": {
-            "description": "高级配置",
-            "hint": ""
+            "hint": "页面尚未保存主题选择时使用该默认值；在「表情管理」中切换后，将持续使用页面保存的主题。",
+            "labels": ["跟随宿主", "暗色鎏金", "亮色", "我的世界", "辐射 4"]
         },
         "custom_meme_classification_prompt": {
             "description": "VLM 分类提示词",
@@ -191,7 +216,8 @@
         },
         "sim_weight_preset": {
             "description": "本地文字匹配风格",
-            "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。"
+            "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。",
+            "labels": ["均衡", "关键词优先", "语义优先", "严格匹配"]
         },
         "show_advanced_settings": {
             "description": "显示高级选项",

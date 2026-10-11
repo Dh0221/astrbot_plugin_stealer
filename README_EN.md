@@ -176,9 +176,12 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 
 | Setting | Default | Description |
 |:---|:---|:---|
-| **Smart keyword extraction** | `true` | Use a lightweight model for search terms and emotion priors; disabled mode searches the reply text directly |
-| **Emotion analysis model** | `""` | Leave blank to use the current session model |
-| **Emotion analysis prompt** | `""` | Leave blank for the bundled template; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
+| **Understand conversation context with a model** | `true` | Extract sticker usage scenes from your reply and the user message; if no model is set, the current session model is used. Adds model calls; disabled mode uses local matching |
+| **Context understanding model (optional)** | `""` | Leave blank to use the current session model; a fast text model is enough, and JEV in advanced settings can replace this step |
+| **Enable JEV selection** | `false` | Turned on together with "Understand conversation context with a model", the official JEV picks from the top 10 pre-filtered candidates; otherwise the traditional LLM path is kept |
+| **TypeSafe API Key** | `""` | Create one at console.typesafe.ai; a missing key or a failed JEV call falls back to the traditional LLM |
+| **TypeSafe API Base URL** | `https://api.typesafe.ai` | The official API by default; trusted compatible proxies are accepted, and the API key is sent to this address |
+| **Emotion analysis prompt** | `""` | Leave blank for the bundled context prompt; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
 
 </details>
 
