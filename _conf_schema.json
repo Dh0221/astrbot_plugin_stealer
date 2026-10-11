@@ -8,7 +8,7 @@
     "description": "开启表情包偷取功能",
     "type": "bool",
     "default": false,
-    "hint": "开启后会监听并保存聊天中的图片。需确保已配置视觉模型，否则无法分类入库。"
+    "hint": "开启后监听并保存聊天中的图片。启用人工审核时先保存原图，通过后再使用视觉模型分类入库。"
   },
   "steal_mode": {
     "description": "偷图模式",
@@ -66,7 +66,7 @@
     "description": "自动偷取需人工审核",
     "type": "bool",
     "default": true,
-    "hint": "开启后自动偷取的图片进入「待审核池」，需在 WebUI 审核区人工通过后才正式入库。关闭后跳过审核，自动偷取的图片直接入库分类，请配合内容审核开关使用以避免低质量图片污染图库。",
+    "hint": "开启后自动收集的原图先进入待审核池，人工通过后立即排队，后台识图成功再正式入库。失败原图保留，可重新通过以重试。关闭后自动识图入库；主动偷图继续立即分析。",
     "condition": {
       "steal_meme": true
     }
@@ -258,7 +258,7 @@
     "description": "语义检索模型",
     "type": "string",
     "default": "",
-    "hint": "选择 AstrBot 中已配置的 Embedding 模型；留空使用首个可用模型。向量未就绪时继续使用本地匹配。",
+    "hint": "留空使用框架首个嵌入提供商。本插件自动检测模型实际输出维度，无需为插件填写维度；模型或维度变化时后台重建向量，期间使用本地匹配。若服务拒绝 dimensions 请求参数，请在 AstrBot 嵌入提供商配置中关闭发送该参数或填写模型支持的值。",
     "condition": {
       "enable_embedding_search": true
     }
@@ -517,6 +517,20 @@
       "严格匹配"
     ],
     "hint": "预设决定多个相似度算法的融合权重：均衡（默认）、关键词优先（子串/字符重叠更敏感）、语义优先（n-gram/余弦更重）、严格匹配（编辑距离和字符级更重，减少误发）。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "model_request_interval": {
+    "description": "模型请求最小间隔（秒）",
+    "type": "float",
+    "default": 5.0,
+    "hint": "本插件对同一提供商的识图、嵌入请求串行执行，默认至少间隔 5 秒开始下一次请求。免费模型额度较低时可调大；付费模型可调小。限流时遵守 Retry-After 并退避，失败任务保留重试。",
+    "slider": {
+      "min": 0,
+      "max": 60,
+      "step": 0.5
+    },
     "condition": {
       "show_advanced_settings": true
     }

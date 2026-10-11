@@ -61,6 +61,14 @@ class DatabaseSchema:
                 if current_version < 6:
                     self._migrate_v6(conn)
 
+                if current_version < 8:
+                    for column, ddl in (("analysis_state", "TEXT NOT NULL DEFAULT 'ready'"),
+                                        ("analysis_error", "TEXT NOT NULL DEFAULT ''"),
+                                        ("manual_fields", "TEXT NOT NULL DEFAULT '[]'")):
+                        columns = {row[1] for row in conn.execute("PRAGMA table_info(emoji_pending)")}
+                        if column not in columns:
+                            conn.execute(f"ALTER TABLE emoji_pending ADD COLUMN {column} {ddl}")
+
             # v3 external-source schema is additive and intentionally runs for
             # every database, including databases already at schema version 6.
             self._ensure_external_schema(conn)
@@ -325,6 +333,7 @@ class DatabaseSchema:
         *(col for col, _ in _META_COLUMNS),
         *(col for col, _ in _SEMANTIC_COLUMNS),
         "retention_class",
+        "analysis_state",
     )
 
     def _migrate_v5(self, conn: sqlite3.Connection) -> None:

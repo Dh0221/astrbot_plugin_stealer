@@ -70,6 +70,7 @@ class PluginConfig(BaseModel):
     steal_pool_capacity: int = 200  # 待审核池容量上限，到达即暂停自动偷取
     enable_embedding_search: bool = False  # 嵌入检索默认关闭；开启后不可用时降级 BM25
     embedding_provider_id: str = ""  # 嵌入模型；留空则尝试框架首个 embedding provider
+    model_request_interval: float = 5.0  # 同一模型提供商请求串行，开始时间至少间隔此秒数
 
     # === 外部表情包源（v3） ===
     external_sources_enabled: bool = True

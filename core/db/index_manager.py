@@ -98,6 +98,19 @@ class IndexManager:
         available = getattr(embedding, "is_available", None)
         if callable(available) and not available():
             return 0
+        prepare = getattr(embedding, '_ensure_provider_ready', None)
+        if callable(prepare):
+            # Model changes enqueue fresh generations before this batch takes
+            # its snapshot, so a successful rebuild is acknowledged once.
+            try:
+                await prepare()
+            except Exception as exc:
+                logger.warning(f'[Embedding] 模型检测等待后台重试: {exc}')
+                return 0
+            # Creating a cold Faiss store can enqueue new generations too;
+            # finish backend selection before taking the durable job snapshot.
+            if callable(available) and not available():
+                return 0
         jobs = await asyncio.to_thread(self.db_service.get_search_refresh_jobs)
         for job in jobs:
             path = job["path"]

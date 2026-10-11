@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..util.model_requests import model_request_gate
 
 try:
     from PIL import Image as PILImage
@@ -339,10 +340,11 @@ class VLMCallService:
                     f"调用VLM (尝试 {attempt + 1}/{max_retries}), "
                     f"provider={provider_id}, 图片={file_url}"
                 )
-                result = await self.plugin.context.llm_generate(
-                    chat_provider_id=provider_id,
-                    prompt=prompt,
-                    image_urls=[file_url],
+                result = await model_request_gate(self.plugin).call(
+                    provider_id,
+                    lambda: self.plugin.context.llm_generate(
+                        chat_provider_id=provider_id, prompt=prompt, image_urls=[file_url],
+                    ),
                 )
 
                 # LLMResponse.completion_text 是 @property，自动处理 result_chain

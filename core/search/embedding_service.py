@@ -19,6 +19,7 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from ..processing.semantic_schema import EMBEDDING_TEXT_VERSION, build_meme_search_text
+from .embedding_provider_adapter import EmbeddingProviderAdapter
 
 
 class EmbeddingService:
@@ -54,6 +55,11 @@ class EmbeddingService:
         self._fallback_dim: int = 0
         self._fallback_loaded: bool = False
         self._fallback_model_sig: str = ""
+        self._observed_identity = ""
+        self._observed_dim = 0
+        self._provider_ready_lock = asyncio.Lock()
+        self._retired_faiss = []
+        self._faiss_operation_lock = asyncio.Lock()
 
     # ═══════════════════════════════════════════════════
     #  Provider（对齐 livingmemory _initialize_providers）
@@ -74,8 +80,7 @@ class EmbeddingService:
             self._provider = None
             self._provider_dim = 0
             self._provider_not_found = False
-            self._faiss_available = None
-            self._faiss_db = None
+            self._retire_faiss()
             self.invalidate_cache()
             self._last_enable_embedding_search = current_enable
             self._last_embedding_provider_id = current_id
@@ -178,10 +183,67 @@ class EmbeddingService:
         """获取 provider 的输出维度。"""
         if hasattr(provider, "get_dim"):
             try:
-                return provider.get_dim()
+                return max(0, int(provider.get_dim()))
             except Exception:
                 pass
         return 0
+
+    def _provider_identity(self, provider) -> str:
+        model = provider.get_model() if callable(getattr(provider, 'get_model', None)) else ''
+        cfg = getattr(provider, 'provider_config', {})
+        endpoint = cfg.get('embedding_api_base', '') if isinstance(cfg, dict) else ''
+        return json.dumps([type(provider).__module__, type(provider).__qualname__,
+                           self._extract_provider_id(provider), model, endpoint,
+                           self._get_provider_dim(provider)], ensure_ascii=False)
+
+    def _effective_dim(self, provider) -> int:
+        if self._provider_identity(provider) == self._observed_identity and self._observed_dim:
+            return self._observed_dim
+        return self._get_provider_dim(provider)
+
+    def _record_dimension(self, provider, dimension: int) -> None:
+        identity = self._provider_identity(provider)
+        first = identity != self._observed_identity or not self._observed_dim
+        changed = identity == self._observed_identity and self._observed_dim and self._observed_dim != dimension
+        self._observed_identity, self._observed_dim = identity, dimension
+        self._provider_dim = dimension
+        if (first or changed) and self._get_provider_dim(provider) != dimension:
+            logger.info(f'[Embedding] 使用模型实际维度 {dimension}（面板填写 {self._get_provider_dim(provider)}）')
+        if changed:
+            self._retire_faiss()
+            self.invalidate_cache()
+            db = getattr(self.plugin, 'db_service', None)
+            if db is not None:
+                db.enqueue_search_refresh(db.get_all_paths())
+            raise ValueError('嵌入输出维度已变化，已安排后台重建')
+
+    def _retire_faiss(self):
+        if self._faiss_db is not None:
+            self._retired_faiss.append(self._faiss_db)
+        self._faiss_db = None
+        self._faiss_available = None
+
+    async def _ensure_provider_ready(self):
+        async with self._provider_ready_lock:
+            provider = self._get_provider()
+            if provider is None:
+                return
+            identity = self._provider_identity(provider)
+            if identity == self._observed_identity and self._observed_dim:
+                return
+            self._retire_faiss()
+            self.invalidate_cache()
+            await EmbeddingProviderAdapter(self, provider).get_embedding('表情包')
+            if self._provider_identity(provider) != identity:
+                self._observed_identity = ''
+                raise ValueError('嵌入模型在请求期间发生变化')
+            db = getattr(self.plugin, 'db_service', None)
+            if db is not None:
+                signature = self._fallback_signature(provider)
+                previous = await asyncio.to_thread(db.get_meta_value, 'embedding_active_signature')
+                if previous != signature:
+                    await asyncio.to_thread(db.enqueue_search_refresh, db.get_all_paths())
+                    await asyncio.to_thread(db.set_meta_value, 'embedding_active_signature', signature)
 
     # ═══════════════════════════════════════════════════
     #  可用性
@@ -204,12 +266,15 @@ class EmbeddingService:
 
     def _init_faiss(self) -> bool:
         """初始化 FaissVecDB。"""
+        self._reset_provider_state_if_changed()
         if self._faiss_available is not None:
             return self._faiss_available
 
         provider = self._get_provider()
         if provider is None:
             self._faiss_available = False
+            return False
+        if self._provider_identity(provider) != self._observed_identity or not self._observed_dim:
             return False
 
         try:
@@ -222,10 +287,16 @@ class EmbeddingService:
 
         try:
             data_dir = self._resolve_data_dir()
-            db_path = f"{data_dir}/emoji_faiss.db"
-            index_path = f"{data_dir}/emoji_faiss.index"
+            signature = self._fallback_signature(provider).split(':')[-1][:24]
+            db_path = f"{data_dir}/emoji_faiss_{signature}.db"
+            index_path = f"{data_dir}/emoji_faiss_{signature}.index"
+            needs_backfill = not Path(db_path).is_file() or not Path(index_path).is_file()
 
-            self._faiss_db = FaissVecDB(db_path, index_path, provider)
+            self._faiss_db = FaissVecDB(db_path, index_path, EmbeddingProviderAdapter(self, provider))
+            if needs_backfill:
+                db = getattr(self.plugin, 'db_service', None)
+                if db is not None:
+                    db.enqueue_search_refresh(db.get_all_paths())
             self._faiss_available = True
             logger.info(f"[Embedding] FaissVecDB 就绪 (dim={self._provider_dim})")
             return True
@@ -245,8 +316,7 @@ class EmbeddingService:
 
     def _fallback_signature(self, provider) -> str:
         model = provider.get_model() if callable(getattr(provider, "get_model", None)) else ""
-        identity = [type(provider).__module__, type(provider).__qualname__,
-                    self._extract_provider_id(provider), model, self._get_provider_dim(provider), EMBEDDING_TEXT_VERSION]
+        identity = [self._provider_identity(provider), model, self._effective_dim(provider), EMBEDDING_TEXT_VERSION]
         return "fallback:" + hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode("utf-8")).hexdigest()
 
     async def _ensure_faiss_initialized(self) -> None:
@@ -295,7 +365,7 @@ class EmbeddingService:
         # 构建 numpy 矩阵（对齐 livingmemory 的向量加载模式）
         vectors = []
         paths = []
-        dim = self._get_provider_dim(provider) if provider is not None else 0
+        dim = self._effective_dim(provider) if provider is not None else 0
         for r in rows:
             blob = r.get("vector")
             path = r.get("path")
@@ -354,6 +424,7 @@ class EmbeddingService:
             return
 
         await self._upgrade_corpus_if_needed()
+        await self._ensure_provider_ready()
 
         # 1. Provider 就绪检查
         provider = self._get_provider()
@@ -413,6 +484,11 @@ class EmbeddingService:
         # 开关关闭时跳过写入，避免触发 provider 探测
         if not self._embedding_enabled():
             return False
+        try:
+            await self._ensure_provider_ready()
+        except Exception as exc:
+            logger.warning(f'[Embedding] 模型检测等待重试: {exc}')
+            return False
 
         text = self._build_search_text(entry)
         if not text:
@@ -426,11 +502,12 @@ class EmbeddingService:
         if self._init_faiss() and self._faiss_db is not None:
             try:
                 await self._ensure_faiss_initialized()
-                ids = await self._faiss_db.insert_batch(
-                    contents=[text],
-                    metadatas=[{"path": path, "category": str(entry.get("category", ""))}],
-                    tasks_limit=1,
-                )
+                async with self._faiss_operation_lock:
+                    ids = await self._faiss_db.insert_batch(
+                        contents=[text],
+                        metadatas=[{"path": path, "category": str(entry.get("category", ""))}],
+                        tasks_limit=1,
+                    )
                 return len(ids) == 1
             except Exception as e:
                 logger.debug(f"[Embedding] FaissVecDB 插入失败: {e}")
@@ -441,9 +518,11 @@ class EmbeddingService:
 
     async def delete_by_path(self, path: str) -> bool:
         """按 path 删除向量。"""
+        await self._ensure_provider_ready()
         if self._init_faiss() and self._faiss_db is not None:
             await self._ensure_faiss_initialized()
-            await self._faiss_db.delete_documents(metadata_filters={"path": path})
+            async with self._faiss_operation_lock:
+                await self._faiss_db.delete_documents(metadata_filters={"path": path})
             return True
 
         db = getattr(self.plugin, "db_service", None)
@@ -458,10 +537,10 @@ class EmbeddingService:
         provider = self._get_provider()
         if provider is None:
             return False
-        signature = self._fallback_signature(provider)
+        identity = self._provider_identity(provider)
 
         try:
-            vec = await provider.get_embedding(text)
+            vec = await EmbeddingProviderAdapter(self, provider).get_embedding(text)
             if not vec or len(vec) == 0:
                 return False
         except Exception as e:
@@ -473,10 +552,11 @@ class EmbeddingService:
             return False
 
         try:
-            if signature != self._fallback_signature(provider):
+            if identity != self._provider_identity(provider):
                 return False
+            signature = self._fallback_signature(provider)
             values = np.asarray(vec, dtype=np.float32)
-            expected = self._get_provider_dim(provider)
+            expected = self._effective_dim(provider)
             if values.ndim != 1 or not np.isfinite(values).all() or (expected and len(values) != expected):
                 return False
             await asyncio.to_thread(db.upsert_embedding, path, values.tobytes(),
@@ -499,6 +579,10 @@ class EmbeddingService:
         """
         if not query or not query.strip():
             return []
+        try:
+            await self._ensure_provider_ready()
+        except Exception:
+            return []
 
         # 截断查询（对齐 livingmemory _MAX_QUERY_CHARS = 2000）
         processed = query[:2000] if len(query) > 2000 else query
@@ -507,9 +591,10 @@ class EmbeddingService:
         if self._init_faiss() and self._faiss_db is not None:
             try:
                 await self._ensure_faiss_initialized()
-                results = await self._faiss_db.retrieve(
-                    query=processed, k=k, fetch_k=k * 2, rerank=False
-                )
+                async with self._faiss_operation_lock:
+                    results = await self._faiss_db.retrieve(
+                        query=processed, k=k, fetch_k=k * 2, rerank=False
+                    )
                 out: list[tuple[str, float]] = []
                 for r in results:
                     data = getattr(r, "data", None)
@@ -565,7 +650,7 @@ class EmbeddingService:
 
             # 嵌入查询
             try:
-                vec = await provider.get_embedding(query)
+                vec = await EmbeddingProviderAdapter(self, provider).get_embedding(query)
                 if not vec:
                     return []
                 if self._fallback_model_sig != self._fallback_signature(provider):
@@ -622,6 +707,7 @@ class EmbeddingService:
         """Reuse FaissVecDB bulk embedding, retries and storage APIs."""
         if not self._embedding_enabled():
             return 0
+        await self._ensure_provider_ready()
         db = getattr(self.plugin, "db_service", None)
         if db is None:
             return 0
@@ -654,11 +740,12 @@ class EmbeddingService:
             successful = []
             if using_faiss and items:
                 try:
-                    ids = await self._faiss_db.insert_batch(
-                        contents=[text for _, _, text in items],
-                        metadatas=[{"path": path, "category": entry.get("category", "")} for path, entry, _ in items],
-                        batch_size=batch_size, tasks_limit=1,
-                    )
+                    async with self._faiss_operation_lock:
+                        ids = await self._faiss_db.insert_batch(
+                            contents=[text for _, _, text in items],
+                            metadatas=[{"path": path, "category": entry.get("category", "")} for path, entry, _ in items],
+                            batch_size=batch_size, tasks_limit=1,
+                        )
                     if len(ids) != len(items):
                         raise RuntimeError("incomplete FaissVecDB batch")
                     successful = [path for path, _, _ in items]
@@ -735,6 +822,12 @@ class EmbeddingService:
 
     async def close(self) -> None:
         """关闭 FaissVecDB 并重置状态。"""
+        for client in self._retired_faiss:
+            try:
+                await client.close()
+            except Exception:
+                pass
+        self._retired_faiss.clear()
         if self._faiss_db is not None:
             try:
                 await self._faiss_db.close()

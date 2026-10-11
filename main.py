@@ -909,17 +909,20 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
             self._sync_similarity_weights()  # 启动时把持久化的文字距离权重同步到 text_similarity 模块
             self.maintenance.start_periodic_tasks()
             await self.event_handler.start_background_workers()
+            from .core.processing.pending_analysis_worker import PendingAnalysisWorker
+            self.pending_analysis_worker = PendingAnalysisWorker(self)
+            await self.pending_analysis_worker.start()
 
             # 初始化嵌入向量服务 + 回填旧数据（仅在开启嵌入检索时）
             if self.plugin_config.enable_embedding_search:
                 try:
                     smart_service = getattr(self.meme_selector, "_smart_select_service", None)
                     if smart_service and smart_service._embedding_service:
-                        await smart_service._embedding_service.initialize()
-                        # 同步回填旧数据（分批处理，每批 20 条）
-                        backfilled = await smart_service._embedding_service.backfill_existing(batch_size=20)
-                        if backfilled > 0:
-                            logger.info(f"[Embedding] 旧数据回填完成: {backfilled} 条新向量")
+                        # Initialization probes the actual output dimension and
+                        # queues existing paths for the durable refresh worker.
+                        self.task_scheduler.create_task(
+                            'embedding_initialize', smart_service._embedding_service.initialize(),
+                        )
                 except Exception as e:
                     logger.warning(f"[Embedding] 初始化失败: {e}")
 

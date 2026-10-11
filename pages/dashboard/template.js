@@ -502,6 +502,7 @@ export const TEMPLATE = `
                 </div>
                 <div class="progress-info">
                     <span>{{ t('pages.dashboard.pending.progress', 'Pending') }} {{ pendingStats.pending }} / {{ pendingStats.capacity }}</span>
+                    <span>{{ t('pages.dashboard.pending.queued_count', 'Queued') }}: {{ pendingStats.queued }} · {{ t('pages.dashboard.pending.processing_count', 'Analyzing') }}: {{ pendingStats.processing }} · {{ t('pages.dashboard.pending.failed_count', 'Failed') }}: {{ pendingStats.failed }}</span>
                     <span v-if="pendingStats.paused" class="progress-paused-label">{{ t('pages.dashboard.pending.paused_hint', 'Stealing is paused and will resume after review.') }}</span>
                 </div>
             </div>
@@ -594,12 +595,17 @@ export const TEMPLATE = `
                             <span v-if="item.scope_mode === 'local'" class="scope-pill local">{{ t('pages.dashboard.scope.local_short', 'Local') }}</span>
                             <span class="pending-source">{{ item.source === 'auto' ? '🤖' : '👤' }}</span>
                         </div>
-                        <div class="pending-desc">{{ item.desc || t('pages.dashboard.messages.no_description', 'No description') }}</div>
+                        <div class="pending-summary">
+                            <div v-if="item.desc" class="pending-desc">{{ item.desc }}</div>
+                            <div class="pending-status" :title="pendingStatusLabel(item)">{{ pendingStatusLabel(item) }}</div>
+                            <div v-if="item.analysis_error" class="pending-error" :title="item.analysis_error">{{ item.analysis_error }}</div>
+                        </div>
                         <div class="pending-tags" v-if="(item.tags || []).length">
                             <span v-for="tag in item.tags" :key="tag" class="tag pending-tag">{{ tag }}</span>
                         </div>
                         <div class="pending-actions" v-if="!pendingBatchMode">
                             <button type="button" @click.stop="approvePending(item.id)"
+                                :disabled="pendingApproving.has(item.id) || ['queued', 'processing'].includes(item.review_status)"
                                 class="pending-btn approve-btn"
                                 :aria-label="t('pages.dashboard.actions.approve', 'Approve')"
                                 :data-tooltip="t('pages.dashboard.actions.approve', 'Approve')">
@@ -609,6 +615,7 @@ export const TEMPLATE = `
                                 </svg>
                             </button>
                             <button type="button" @click.stop="openPendingEdit(item)"
+                                :disabled="['queued', 'processing'].includes(item.review_status)"
                                 class="pending-btn edit-btn"
                                 :aria-label="t('pages.dashboard.actions.edit_approve', 'Edit & approve')"
                                 :data-tooltip="t('pages.dashboard.actions.edit_approve', 'Edit & approve')">
@@ -618,6 +625,7 @@ export const TEMPLATE = `
                                 </svg>
                             </button>
                             <button type="button" @click.stop="rejectPending(item.id)"
+                                :disabled="item.review_status === 'processing'"
                                 class="pending-btn reject-btn"
                                 :aria-label="t('pages.dashboard.actions.delete', 'Delete')"
                                 :data-tooltip="t('pages.dashboard.actions.delete', 'Delete')">
@@ -627,6 +635,7 @@ export const TEMPLATE = `
                                 </svg>
                             </button>
                             <button type="button" @click.stop="rejectPending(item.id, true)"
+                                :disabled="item.review_status === 'processing'"
                                 class="pending-btn reject-bl-btn"
                                 :aria-label="t('pages.dashboard.actions.blacklist', 'Blacklist')"
                                 :data-tooltip="t('pages.dashboard.actions.blacklist', 'Blacklist')">

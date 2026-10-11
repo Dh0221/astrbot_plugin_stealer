@@ -65,7 +65,15 @@ createApp({
         const pendingTotal = ref(0);
         const pendingCategoryTotal = ref(0);
         const pendingCategories = ref([]);
-        const pendingStats = reactive({ pending: 0, capacity: 200, paused: false });
+        const pendingStats = reactive({ pending: 0, capacity: 200, paused: false, queued: 0, processing: 0, failed: 0 });
+        const pendingApproving = ref(new Set());
+        let pendingPollTimer = null;
+        let pendingPollStopped = false;
+        const pendingStatusLabel = (item) => t('pages.dashboard.messages.analysis_' + item.review_status,
+            ({ pending: 'Waiting for review', queued: 'Queued', processing: 'Analyzing', failed: 'Failed; retry available' })[item.review_status] || 'Waiting for review');
+        const pendingQueuedMessage = (data) => data.queued
+            ? ' ' + t('pages.dashboard.alerts.pending_queued', '{count} item(s) queued for background analysis.').replace('{count}', data.queued)
+            : '';
         const hudHpPct = computed(() => `${Math.max(12, Math.min(100, Number(stats.total || 0)))}%`);
         const hudApPct = computed(() => {
             const cap = Number(pendingStats.capacity || 200) || 200;
@@ -368,6 +376,7 @@ createApp({
 
         const getCategoryName = (key) => {
             const categoryKey = String(key || '').trim();
+            if (!categoryKey) return t('pages.dashboard.messages.analysis_unanalysed', 'Waiting for analysis');
             const category = [...categories.value, ...pendingCategories.value]
                 .find((item) => item.key === categoryKey);
             return category?.name || categoryKey;
@@ -885,10 +894,10 @@ createApp({
             } catch (e) { console.error(e); }
         };
 
-        const fetchPendingImages = async (page = 1) => {
+        const fetchPendingImages = async (page = 1, silent = false) => {
             if (pendingFetchLock) return;
             pendingFetchLock = true;
-            pendingLoading.value = true;
+            if (!silent) pendingLoading.value = true;
             try {
                 const params = new URLSearchParams({
                     page: page.toString(),
@@ -916,7 +925,8 @@ createApp({
                 pendingCurrentPage.value = page;
                 pendingImages.value = nextImages;
                 pendingTotal.value = nextTotal;
-                pendingCategories.value = nextCategories;
+                pendingCategories.value = nextCategories.map(category => category.key ? category :
+                    { ...category, name: t('pages.dashboard.messages.analysis_unanalysed', 'Waiting for analysis') });
                 pendingCategoryTotal.value = Number.isFinite(nextCategoryTotal)
                     ? nextCategoryTotal
                     : nextCategories.reduce((sum, category) => sum + category.count, 0);
@@ -976,6 +986,8 @@ createApp({
         };
 
         const approvePending = async (id) => {
+            if (pendingApproving.value.has(id)) return;
+            pendingApproving.value = new Set([...pendingApproving.value, id]);
             try {
                 const res = await apiFetch('api/pending/approve', {
                     method: 'POST',
@@ -984,13 +996,14 @@ createApp({
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showAlert(t('pages.dashboard.alerts.pending_approved', 'Approved {count} item(s).').replace('{count}', data.approved), 'success');
+                    showAlert(t('pages.dashboard.alerts.pending_approved', 'Approved {count} item(s).').replace('{count}', data.approved) + pendingQueuedMessage(data), 'success');
                     await fetchPendingImages(pendingCurrentPage.value);
                     await fetchPendingStats();
                 } else {
                     showAlert(`${t('pages.dashboard.alerts.approve_failed', 'Approve failed')}: ${data.error || t('pages.dashboard.messages.unknown_error', 'Unknown error')}`, 'error');
                 }
             } catch (e) { showAlert(`${t('pages.dashboard.alerts.approve_failed', 'Approve failed')}: ${e.message}`, 'error'); }
+            finally { const ids = new Set(pendingApproving.value); ids.delete(id); pendingApproving.value = ids; }
         };
 
         // issue #87：审核区编辑
@@ -1093,7 +1106,7 @@ createApp({
                     const failed = data.errors?.length
                         ? ` ${t('pages.dashboard.alerts.failed_count', '{count} failed.').replace('{count}', data.errors.length)}`
                         : '';
-                    showAlert(t('pages.dashboard.alerts.pending_approved', 'Approved {count} item(s).').replace('{count}', data.approved) + failed);
+                    showAlert(t('pages.dashboard.alerts.pending_approved', 'Approved {count} item(s).').replace('{count}', data.approved) + pendingQueuedMessage(data) + failed);
                 }
                 pendingSelectedImages.value = new Set();
                 pendingBatchMode.value = false;
@@ -2486,6 +2499,15 @@ createApp({
             }, 300);
         };
         onMounted(() => {
+            const pollPending = async () => {
+                if (pendingPollStopped) return;
+                if (activeSection.value === 'pending') {
+                    await fetchPendingStats();
+                    await fetchPendingImages(pendingCurrentPage.value, true);
+                }
+                if (!pendingPollStopped) pendingPollTimer = setTimeout(pollPending, 3000);
+            };
+            pendingPollTimer = setTimeout(pollPending, 3000);
             updateDocumentMeta();
             syncThemeFromContext();
             applyTheme();
@@ -2514,6 +2536,8 @@ createApp({
         });
 
         onUnmounted(() => {
+            pendingPollStopped = true;
+            clearTimeout(pendingPollTimer);
             window.removeEventListener('keydown', handleKeydown);
             window.removeEventListener('resize', handleResize);
             window.removeEventListener('click', closeThemePicker);
@@ -2559,6 +2583,8 @@ createApp({
             pendingCategories,
             pendingStats,
             pendingLoading,
+            pendingApproving,
+            pendingStatusLabel,
             pendingSearchQuery,
             pendingCategory,
             pendingCurrentPage,

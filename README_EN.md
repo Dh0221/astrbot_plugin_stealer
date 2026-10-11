@@ -148,7 +148,7 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **Steal probability** | `0.3` | Collection probability in probability mode |
 | **Content filtration** | `false` | Use VLM to filter inappropriate images; adds processing time |
 | **Pending pool capacity** | `200` | Stealing pauses at this many pending images and resumes after review |
-| **Require manual review for auto-steal** | `true` | Route auto-collected images to Review Queue; when disabled, validated images enter the library directly |
+| **Require manual review for auto-steal** | `true` | Save originals before vision calls. Approval immediately queues background analysis; successful results enter the library. With review off, automatic analysis continues |
 | **QQ_Official collection mode** | `cdn_only` | `all_images` collects every image; `cdn_only` uses emoji CDN markers; `gif_only` keeps GIFs only |
 
 </details>
@@ -192,7 +192,12 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 |:---|:---|:---|
 | **Vision model** | `""` | Leave blank to use AstrBot's global image-caption provider |
 | **Enable embedding search** | `false` | Use FaissVecDB semantic retrieval; falls back to BM25 when unavailable |
+| **Minimum model request interval (seconds)** | `5.0` | Vision and embedding requests run serially per provider. Increase for low free-tier quotas; configurable in advanced settings |
 | **Embedding model ID** | `""` | Leave blank for AstrBot's first Embedding Provider; enter an Embedding model ID, not a chat or vision model ID |
+
+Embedding dimensions are detected from actual vectors. Model or dimension changes rebuild vectors in the background while local matching remains available. If the API rejects the `dimensions` request parameter, disable that parameter or enter a supported value in the AstrBot provider settings.
+
+Approval returns before vision analysis, allowing continuous review. The review area shows queued, analyzing and failed images. Failed originals are kept; approve again to retry. Jobs recover after restart and remain within the pending capacity limit. Legacy pending images and external imports with metadata keep their existing promotion flow.
 
 </details>
 

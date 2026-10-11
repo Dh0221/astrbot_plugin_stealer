@@ -32,6 +32,7 @@ def embedding_fixture(tmp_path):
                           document_storage=SimpleNamespace(get_documents=AsyncMock(return_value=[])))
     service._faiss_db = sdk
     service._init_faiss = lambda: True
+    service._ensure_provider_ready = AsyncMock()
     return service, db, sdk, plugin
 
 

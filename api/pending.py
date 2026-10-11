@@ -18,7 +18,8 @@ class PendingRoutes:
         """待审核记录与图库使用同一套展示字段。"""
         item = self._build_image_item(str(row.get("path") or ""), row)
         if item is not None:
-            item.update(id=row.get("id"), review_status=str(row.get("review_status") or "pending"))
+            item.update(id=row.get("id"), review_status=str(row.get("review_status") or "pending"),
+                        analysis_state=row.get('analysis_state', 'ready'), analysis_error=row.get('analysis_error', ''))
         return item
 
     async def handle_list_pending(self):
@@ -67,6 +68,7 @@ class PendingRoutes:
             db = self._db
             pending = db.count_pending() if db and hasattr(db, "count_pending") else 0
             capacity = int(getattr(self.plugin, "steal_pool_capacity", 200) or 200)
+            states = db.pending_analysis_stats() if db and hasattr(db, 'pending_analysis_stats') else {}
             return jsonify(
                 {
                     "success": True,
@@ -74,6 +76,9 @@ class PendingRoutes:
                         "pending": pending,
                         "capacity": capacity,
                         "paused": pending >= capacity,
+                        "queued": states.get('queued', 0),
+                        "processing": states.get('processing', 0),
+                        "failed": states.get('failed', 0),
                     },
                 }
             )
@@ -92,6 +97,21 @@ class PendingRoutes:
         return list({int(i) for i in raw if i is not None})
 
     async def _approve_one(self, db, pending_id: int) -> tuple[bool, str]:
+        row = db.get_pending(pending_id)
+        if row is None:
+            return False, 'pending not found'
+        if row.get('review_status') in ('queued', 'processing'):
+            return False, 'already queued'
+        if row.get('analysis_state', 'ready') != 'ready' or row.get('review_status') == 'failed':
+            if not await db.queue_pending_analysis(pending_id):
+                return False, 'already queued'
+            worker = getattr(self.plugin, 'pending_analysis_worker', None)
+            if worker is not None:
+                worker.wakeup.set()
+            return True, 'queued'
+        return await self._promote_one(db, pending_id)
+
+    async def _promote_one(self, db, pending_id: int) -> tuple[bool, str]:
         """审核通过单条：pending 文件 → categories/，写 emoji+tag+scene，删 pending 行。
 
         原子性：文件 move 成功 → 写 emoji；emoji 写入失败 → 文件移回 pending，视为本次失败。
@@ -140,18 +160,21 @@ class PendingRoutes:
                 return jsonify({"success": False, "error": "db 不可用"})
 
             approved = 0
+            queued = 0
             errors: list[str] = []
             for pending_id in ids:
                 ok, msg = await self._approve_one(db, pending_id)
                 if ok:
                     approved += 1
-                elif msg and msg not in ("pending not found",):
+                    queued += int(msg == 'queued')
+                elif msg and msg not in ("pending not found", 'already queued'):
                     errors.append(f"id={pending_id}: {msg}")
 
             return jsonify(
                 {
                     "success": approved > 0,
                     "approved": approved,
+                    "queued": queued,
                     "errors": errors,
                 }
             )

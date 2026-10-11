@@ -297,6 +297,7 @@ class ImageProcessorService:
         source_url: str = "",
         original_name: str = "",
         add_method: str = "auto",
+        analysis_state: str = "ready",
     ) -> tuple[bool, dict[str, Any] | None]:
         """将偷取的图片落点到待审核池（pending 目录 + emoji_pending 表）。
 
@@ -349,6 +350,9 @@ class ImageProcessorService:
                     phash_val, source_url, original_name, add_method,
                 )
                 meta["path"] = pending_path
+                meta["analysis_state"] = analysis_state
+                if analysis_state == 'unanalysed':
+                    meta['_pending_capacity'] = int(getattr(self.plugin_config, 'steal_pool_capacity', 200))
                 pending_id = await db.insert_pending(meta)
                 if pending_id is None:
                     raise RuntimeError("pending metadata insertion failed")
@@ -386,9 +390,8 @@ class ImageProcessorService:
             categories: 分类列表
             content_filtration: 是否进行内容过滤
             is_platform_emoji: 是否为平台标记的表情包
-            to_pending: 落点为待审核池（on_message 自动偷取专用）。
-                为 True 时分类有效后写入 pending 目录与 emoji_pending 表，
-                不写 emoji/tag/scene/embedding；force_capture/工具/WebUI 不传此参数。
+            to_pending: 自动收集先保存原图及本地元数据，人工通过后后台识图。
+                不写图库与向量；force_capture/工具/WebUI 继续直接分析。
 
         Returns:
             tuple: (是否成功, 图片索引)
@@ -429,6 +432,18 @@ class ImageProcessorService:
             self._processing_hashes.add(hash_val)
 
         try:
+            if to_pending:
+                # Manual review needs only the original image and local metadata.
+                metadata = await asyncio.to_thread(self._probe_image_metadata, file_path)
+                if not metadata.get('format'):
+                    return False, None
+                async with self._process_lock:
+                    return await self._store_to_pending(
+                        file_path, is_temp, "", hash_val, extra_meta=extra_meta,
+                        phash_val=phash_val, source_url=source_url,
+                        original_name=original_name, add_method=add_method,
+                        analysis_state="unanalysed",
+                    )
             # 3. 缓存检查（锁外；缓存带 VLM model_sig，换模型即失效）
             model_sig = str(await self._vlm_call_service._resolve_vision_provider(event) or "")
             cached = self._get_valid_cache(hash_val, model_sig)

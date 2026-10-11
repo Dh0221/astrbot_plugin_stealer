@@ -41,7 +41,7 @@ class DatabaseService(
     _RELATED_FETCH_CHUNK_SIZE = 400
 
     # 表结构版本，用于迁移检测
-    SCHEMA_VERSION = 7
+    SCHEMA_VERSION = 8
     EXTERNAL_SCHEMA_VERSION = 1
 
     def __init__(self, db_path: str | Path | None = None):
