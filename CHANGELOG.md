@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.7] - 2026-10-12
+
+### added
+- 审核通过后立即进入后台识图队列，支持单张和批量通过；审核区展示排队、识图中及失败状态，可继续审核下一张，失败原图保留并支持重试（#114）
+- SQLite schema v8 保存识图状态、失败原因和人工修改字段，支持重启恢复及任务取消后的重新排队
+- 新增高级配置「模型请求最小间隔（秒）」，默认 5 秒，可按模型额度调整
+
+### changed
+- 启用人工审核时，自动收集先执行下载、图片校验和去重，再保存原图；通过后才调用视觉模型，成功后正式入库。关闭人工审核及主动偷图继续立即分析
+- 嵌入维度根据模型实际返回的向量自动检测，FAISS 索引按模型与维度隔离；同一模型重启时复用已有向量，模型或维度变化时在后台重建
+- 同一提供商的识图与嵌入请求串行执行并共享限流冷却，遵守 Retry-After；嵌入暂不可用时继续使用本地匹配
+- 启动时的嵌入回填转入现有后台调度器和持久化刷新队列，减少插件启动等待
+
+### fixed
+- 修复嵌入提供商填写维度与实际响应不一致导致向量写入失败的问题，并避免冷启动时首批向量重复回填
+- 防止正在识图的图片被并发编辑或删除，保留人工修改的描述、标签等字段；队列容量在数据库提交时校验
+- 配置提示、README 和日志统一引用当前面板选项名，补齐三语配置键及下拉选项翻译，修复 JEV 提示引用旧名称的问题（#115、#116）
+- 修复审核卡片在窄屏下描述与处理状态挤压的布局
+
+### English summary
+- Manual approval queues durable background vision analysis immediately; progress, retries, restart recovery and manual metadata preservation are supported.
+- Actual embedding dimensions are detected automatically. Model-specific indexes reuse existing vectors after restart and rebuild in the background when needed.
+- Vision and embedding requests run serially per provider with a configurable 5-second default interval and shared Retry-After cooldowns. Startup backfill runs in the background.
+- Configuration names, three-language option labels and JEV hints now match the current UI; cold-index duplicate backfill and narrow-screen review layouts are fixed.
+
 ## [3.1.6] - 2026-10-08
 
 ### added
