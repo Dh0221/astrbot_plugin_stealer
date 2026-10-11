@@ -340,12 +340,13 @@ JEV 可选择 `none`，此时本轮不发送，也不回退随机选图；无候
 ## 🚢 维护者发布流程
 
 1. 在 `metadata.yaml` 更新版本，并在 `CHANGELOG.md` 增加同版本、带日期的章节。
-2. 本地运行 pytest、Ruff、Python 编译、前端语法和发布脚本校验。
-3. 提交并推送包含 `metadata.yaml` 变化的 commit 到 `master` 或 `main`，例如 `git commit -m "release: vX.Y.Z"` 后执行 `git push origin master`。
+2. 本地只运行与改动有关的测试、静态检查和 `python scripts/release.py validate` 发布契约校验。安装包构建与打包测试统一在 GitHub Actions 执行，本地不生成 ZIP、校验文件或发布预览包，也不下载发布资产做重复验证。
+3. 提交并推送包含 `metadata.yaml` 变化的 commit 到 `master` 或 `main`，例如 `git commit -m "release: 发布 vX.Y.Z"` 后执行 `git push origin master`。
 4. Release Action 只响应包含 `metadata.yaml` 的推送；它会检查版本严格递增、运行完整测试、构建 ZIP 与 `.sha256`，创建 `vX.Y.Z` 标签和 GitHub Release，并回下载校验哈希。
 5. 在 Actions 页面手动运行 Release 时，`publish=false` 会按 `ref` 做校验、打包并上传 7 天临时产物，不创建标签或正式 Release；确认无误后再使用 `publish=true`。
+6. 发布后查看 Actions 结果、标签及 Release 页的 ZIP 和校验文件；正式包的回下载与 SHA-256 验证由 Release Action 完成，本地无需重复保存这些产物。
 
-普通代码提交和 PR 仍由 CI 检查，单独修改其他文件不会触发正式发布流程。
+PR 自动运行 CI；普通代码提交可在 Actions 页面手动运行 CI。CI 在 Python 3.12 上执行打包检查，完整检查覆盖 Python 3.12 与 3.13。单独修改其他文件不会触发正式发布流程。
 
 ## 📄 许可证
 

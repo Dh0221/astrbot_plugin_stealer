@@ -324,12 +324,13 @@ Removing favorite/character protection returns ordinary stickers to the quota, p
 ## 🚢 Maintainer Release Flow
 
 1. Update the version in `metadata.yaml` and add a dated section for that version to `CHANGELOG.md`.
-2. Run pytest, Ruff, Python compilation, dashboard syntax checks, and the release-script validation locally.
-3. Commit and push the change to `master` or `main`, including the `metadata.yaml` change (for example, `git commit -m "release: vX.Y.Z"` followed by `git push origin master`).
+2. Run only relevant tests, static checks, and `python scripts/release.py validate` locally. Package builds and packaging tests run in GitHub Actions; do not generate local ZIPs, checksum files or release previews, or download release assets for duplicate verification.
+3. Commit and push the change to `master` or `main`, including the `metadata.yaml` change (for example, `git commit -m "release: 发布 vX.Y.Z"` followed by `git push origin master`).
 4. The Release Action responds only when the pushed commit changes `metadata.yaml`. It requires a strictly higher version, runs the full checks, builds the ZIP and `.sha256`, creates the `vX.Y.Z` tag and GitHub Release, and downloads the asset again to verify its hash.
 5. A manual Release run with `publish=false` validates and packages the selected `ref`, uploading a seven-day dry-run artifact without creating a tag or release. Use `publish=true` only after that check succeeds.
+6. Verify the Actions result, release tag and listed ZIP/checksum assets. The Release Action downloads the published package and checks its SHA-256; local copies are unnecessary for release verification.
 
-Ordinary code commits and pull requests still use CI; changing other files alone does not start the publishing workflow.
+Pull requests run CI automatically; ordinary code commits can run CI manually from Actions. Packaging checks run on Python 3.12, while the full checks cover Python 3.12 and 3.13. Changing other files alone does not start the publishing workflow.
 
 ## 📄 License
 
