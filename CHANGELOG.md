@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.8] - 2026-10-22
+
+### added
+- JEV 选图新增可选模型 ID 配置 `typesafe_model_id`，兼容需要自定义模型名的 System One 代理，例如 Command Code 的 `typesafe/jev`（#117）
+
+### changed
+- 模型 ID 留空或仅含空白时继续使用 `jev-latest`，自动去除首尾空白，保持现有配置与选图回退行为兼容
+- 同步配置 schema、中英俄界面提示和双语 README，说明模型默认值与兼容代理配置方式
+
+### English summary
+- JEV selection now accepts an optional `typesafe_model_id` for compatible System One proxies, such as `typesafe/jev` for Command Code (#117).
+- Blank or whitespace-only values keep `jev-latest`; surrounding whitespace is trimmed. Existing selection and fallback behavior is preserved, with matching schema, translations and README updates.
+
 ## [3.1.7] - 2026-10-12
 
 ### added

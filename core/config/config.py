@@ -61,9 +61,10 @@ class PluginConfig(BaseModel):
     image_processing_cooldown: int = 30
     enable_natural_emotion_analysis: bool = True  # 情绪识别模式
     emotion_analysis_provider_id: str = ""  # 语境理解模型
-    enable_jev: bool = False  # 需同时开启 enable_natural_emotion_analysis；使用官方 JEV 决策 Top 10
+    enable_jev: bool = False  # 需同时开启 enable_natural_emotion_analysis；使用 JEV 决策 Top 10
     typesafe_api_key: str = ""  # TypeSafe (jev) API key，console.typesafe.ai 获取
     typesafe_api_base_url: str = "https://api.typesafe.ai"  # 官方地址或兼容代理
+    typesafe_model_id: str = ""  # 留空使用 jev-latest，兼容代理可指定模型 ID
     smart_meme_selection: bool = True  # 智能表情包选择
 
     # === 待审核池 / 嵌入检索 ===

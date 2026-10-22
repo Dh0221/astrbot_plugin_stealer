@@ -89,7 +89,7 @@
         },
         "enable_jev": {
             "description": "Enable JEV selection",
-            "hint": "Requires \"Understand conversation context with a model\" above. When disabled, the traditional LLM path is used; when enabled, JEV picks from up to 10 pre-filtered candidates. The official endpoint is used by default, and a trusted API Base URL can be set below. The model is fixed to jev-latest. Sends candidate metadata, roughly the last 3 turns, and the current exchange; a none pick sends nothing, and a missing key or a failed call falls back to the LLM."
+            "hint": "Requires \"Understand conversation context with a model\" above. When disabled, the traditional LLM path is used; when enabled, JEV picks from up to 10 pre-filtered candidates. Uses the official endpoint and jev-latest model by default; a trusted API Base URL and JEV model ID can be set below. Sends candidate metadata, roughly the last 3 turns, and the current exchange; a none pick sends nothing, and a missing key or a failed call falls back to the LLM."
         },
         "typesafe_api_key": {
             "description": "TypeSafe API Key",
@@ -98,6 +98,10 @@
         "typesafe_api_base_url": {
             "description": "TypeSafe API Base URL",
             "hint": "Uses the official TypeSafe API by default. Usually only the domain is needed; a value ending in /v1 or a full /v1/systemone address also works. The API key is sent to this address, so configure a trusted service only."
+        },
+        "typesafe_model_id": {
+            "description": "JEV model ID",
+            "hint": "Leave blank to use the default jev-latest model. For a compatible proxy, enter its required model ID; for example, Command Code uses typesafe/jev."
         },
         "vision_provider_id": {
             "description": "Vision model",

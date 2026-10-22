@@ -178,9 +178,10 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 |:---|:---|:---|
 | **用模型理解对话语境** | `true` | 开启后根据你的回复与用户消息提取表情包使用场景；留空模型时跟随当前会话。会增加模型调用；关闭后使用本地匹配 |
 | **语境理解模型** | `""` | 留空使用当前会话模型；可选择响应快的文本模型，高级设置中的 JEV 可替代这一步 |
-| **启用 JEV 选图** | `false` | 与“用模型理解对话语境”同时开启后由官方 JEV 从 Top 10 中选图；未勾选时保留传统 LLM 链路 |
+| **启用 JEV 选图** | `false` | 与“用模型理解对话语境”同时开启后由 JEV 从 Top 10 中选图；未勾选时保留传统 LLM 链路 |
 | **TypeSafe API Key** | `""` | 在 console.typesafe.ai 获取；缺少 key 或 JEV 调用失败时回退传统 LLM |
 | **TypeSafe API Base URL** | `https://api.typesafe.ai` | 默认使用官方 API；支持可信的兼容代理地址，API Key 会发送到该地址 |
+| **JEV 模型 ID** | `""` | 留空使用 `jev-latest`；兼容代理可指定模型 ID，例如 Command Code 使用 `typesafe/jev` |
 | **情绪分析提示词** | `""` | 留空使用内置语境提示词，支持 `{emotion_list}`、`{llm_reply}` 和 `{user_message}` |
 
 </details>
@@ -263,7 +264,9 @@ LLM 情绪模式会用轻量模型提取检索词和情绪先验；被动检索�
 同时勾选“用模型理解对话语境”（`enable_natural_emotion_analysis`）和“启用 JEV 选图”（`enable_jev`），填写 `typesafe_api_key` 后，
 自动表情采用“本轮用户消息与助手回复 → 相关度粗筛 Top 10 → JEV 选择候选编号 → 发送”。
 API Base URL 默认是 `https://api.typesafe.ai`，插件自动补全 `/v1/systemone`；也兼容以 `/v1`
-结尾或直接填写完整 endpoint。模型固定为 `jev-latest`。修改 Base URL 时，API Key 会发送到该地址，
+结尾或直接填写完整 endpoint。JEV 模型 ID（`typesafe_model_id`）留空或仅含空白时使用 `jev-latest`，
+也可填写兼容代理要求的模型 ID，例如 Command Code 使用 `typesafe/jev`；模型 ID 的首尾空白会自动去除。
+修改 Base URL 时，API Key 会发送到该地址，
 因此应只配置可信服务。
 JEV 粗筛始终使用相关度排序，不受 `smart_meme_selection` 的随机模式影响；传统 LLM 链路继续沿用该开关。
 粗筛先排除当前会话不可见或文件缺失的条目，不随机抽取候选；候选不足 10 张时按实际数量提供。

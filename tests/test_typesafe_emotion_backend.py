@@ -145,9 +145,18 @@ async def test_checkbox_routing_matrix(master, jev, route):
 
 
 @pytest.mark.asyncio
-async def test_request_contains_ten_metadata_options_and_context(monkeypatch):
+@pytest.mark.parametrize("overrides,expected_model", [
+    ({}, "jev-latest"),
+    ({"typesafe_model_id": ""}, "jev-latest"),
+    ({"typesafe_model_id": " \t "}, "jev-latest"),
+    ({"typesafe_model_id": "typesafe/jev"}, "typesafe/jev"),
+    ({"typesafe_model_id": "  typesafe/jev\t"}, "typesafe/jev"),
+])
+async def test_request_contains_ten_metadata_options_and_context(
+    monkeypatch, overrides, expected_model,
+):
     captured = install_http(monkeypatch, answer("m10"))
-    svc = JevSelector(SimpleNamespace(plugin_config=config()))
+    svc = JevSelector(SimpleNamespace(plugin_config=config(**overrides)))
     candidates = [
         (
             f"private/path/{i}.png",
@@ -171,7 +180,7 @@ async def test_request_contains_ten_metadata_options_and_context(monkeypatch):
     assert captured["url"] == "https://api.typesafe.ai/v1/systemone"
     assert captured["headers"]["Authorization"] == "Bearer test-key"
     assert captured["timeout"].total == 10
-    assert body["model"] == "jev-latest"
+    assert body["model"] == expected_model
     assert body["state"]["recent_conversation"] == [
         {"role": "user", "content": "加班结束了"}
     ]
@@ -180,6 +189,33 @@ async def test_request_contains_ten_metadata_options_and_context(monkeypatch):
     assert len(options) == 11 and "none" in options and "m11" not in options
     assert options["m01"]["overlay_text"] == "下班了"
     assert "private" not in json.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_legacy_config_without_model_id_uses_default(monkeypatch):
+    captured = install_http(monkeypatch, answer("m01"))
+    cfg = SimpleNamespace(typesafe_api_key="test-key")
+    svc = JevSelector(SimpleNamespace(plugin_config=cfg))
+    assert await svc.select(
+        [("a.png", {})], history=[], user_message="用户", reply="回复",
+    ) == "a.png"
+    assert captured["json"]["model"] == "jev-latest"
+
+
+@pytest.mark.asyncio
+async def test_model_id_update_is_persisted_and_used(monkeypatch):
+    captured = install_http(monkeypatch, answer("m01"))
+    cfg = config(typesafe_api_base_url="https://api.commandcode.ai/provider/v1")
+    svc = JevSelector(SimpleNamespace(plugin_config=cfg))
+    for model_id, expected in [("typesafe/jev", "typesafe/jev"), ("", "jev-latest")]:
+        assert cfg.update_config({"typesafe_model_id": model_id})
+        reloaded = PluginConfig(cfg._data)
+        assert reloaded.typesafe_model_id == model_id
+        assert await svc.select(
+            [("a.png", {})], history=[], user_message="用户", reply="回复",
+        ) == "a.png"
+        assert captured["url"] == "https://api.commandcode.ai/provider/v1/systemone"
+        assert captured["json"]["model"] == expected
 
 
 @pytest.mark.asyncio
@@ -391,11 +427,16 @@ async def test_sender_routes_preserve_llm_and_abstention(mode, result, fail, exp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("choice", ["m02", "none"])
-async def test_rank_http_decision_to_sender(tmp_path, monkeypatch, choice):
+@pytest.mark.parametrize("model_id,expected_model", [
+    ("", "jev-latest"), ("typesafe/jev", "typesafe/jev"),
+])
+async def test_rank_http_decision_to_sender(
+    tmp_path, monkeypatch, choice, model_id, expected_model,
+):
     captured = install_http(monkeypatch, answer(choice))
     svc, idx, strategy, scope = build_ranking(tmp_path)
     plugin = SimpleNamespace(
-        plugin_config=config(), enable_natural_emotion_analysis=True,
+        plugin_config=config(typesafe_model_id=model_id), enable_natural_emotion_analysis=True,
         is_send_enabled_for_event=lambda event: True,
         emotion_analyzer=SimpleNamespace(analyze_for_reply=AsyncMock()),
     )
@@ -419,6 +460,7 @@ async def test_rank_http_decision_to_sender(tmp_path, monkeypatch, choice):
     event = llm_event(engine, "终于下班了")
     await engine.async_analyze_and_send_emoji(event, "终于下班了", [], user_message="下班啦")
     assert len(captured["json"]["questions"]["meme"]["criteria"]) == 11
+    assert captured["json"]["model"] == expected_model
     plugin.emotion_analyzer.analyze_for_reply.assert_not_awaited()
     if choice == "m02":
         selector.send_emoji_with_text.assert_awaited_once_with(event, list(idx)[1], "终于下班了")
@@ -432,8 +474,22 @@ def test_backend_config_defaults_match_schema():
     from pathlib import Path
 
     schema = json.loads((Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8"))
-    for key in ("enable_jev", "typesafe_api_key", "typesafe_api_base_url"):
+    for key in ("enable_jev", "typesafe_api_key", "typesafe_api_base_url", "typesafe_model_id"):
         assert schema[key]["default"] == PluginConfig.model_fields[key].default
     assert schema["enable_jev"]["default"] is False
     assert schema["enable_jev"]["type"] == "bool"
+    assert schema["typesafe_model_id"]["type"] == "string"
+    assert schema["typesafe_model_id"]["default"] == ""
+    assert schema["typesafe_model_id"]["condition"] == {
+        "show_advanced_settings": True, "enable_jev": True,
+    }
+    for locale in ("zh-CN", "en-US", "ru-RU"):
+        messages = json.loads(
+            (Path(__file__).parents[1] / ".astrbot-plugin" / "i18n" / f"{locale}.json")
+            .read_text(encoding="utf-8")
+        )
+        model_field = messages["config"]["typesafe_model_id"]
+        assert model_field["description"]
+        assert "jev-latest" in model_field["hint"]
+        assert "typesafe/jev" in model_field["hint"]
     assert "emotion_backend" not in schema

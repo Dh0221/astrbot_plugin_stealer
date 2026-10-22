@@ -133,8 +133,12 @@ class JevSelector:
         for role, text in (("assistant", reply), ("user", user_message)):
             if recent and recent[-1] == {"role": role, "content": text.strip()[:400]}:
                 recent.pop()
+        model = (
+            str(getattr(self.plugin.plugin_config, "typesafe_model_id", "") or "").strip()
+            or self.MODEL
+        )
         body = {
-            "model": self.MODEL,
+            "model": model,
             "state": {
                 "recent_conversation": recent,
                 "current_user_message": user_message[:2000],
