@@ -16,11 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 JEV 选图请求忽略 AstrBot HTTP/HTTPS 代理设置，导致需要代理的环境持续直连并返回 HTTP 451 的问题；请求同时遵守 `no_proxy` 绕过列表（#118）
 
 ### changed
-- 补充中英文 README 的 JEV 网络代理说明，整理源码注释和模块职责说明
+- 补充中英文 README 的 JEV 网络代理说明
 
 ### English summary
 - JEV requests now use AstrBot's HTTP/HTTPS proxy settings and respect `no_proxy`, fixing direct connections that caused HTTP 451 in proxy-dependent environments (#118).
-- Updated proxy documentation and clarified source comments and module responsibilities.
+- Updated JEV network proxy documentation in the Chinese and English READMEs.
 
 ## [3.1.8] - 2026-10-22
 
