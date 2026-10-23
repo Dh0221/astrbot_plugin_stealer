@@ -47,7 +47,7 @@ class IndexRebuildCommand:
                 old_index = self.plugin.db_service.get_index_cache_readonly()
                 logger.info(f"[rebuild_index] 从数据库加载 {len(old_index)} 条旧记录")
 
-            # 2. 尝试加载所有可能的旧版 JSON 文件（不依赖 _load_index 的迁移逻辑）
+            # 2. 加载各候选路径中的 JSON 索引。
             legacy_metadata_count = 0
             legacy_data_map = {}
             possible_legacy_paths = []

@@ -72,7 +72,7 @@ class PlatformDetector:
         """
         try:
             # QQ 官方（botpy）兼容：raw_message 是 SDK 对象而非 OneBot dict 段列表，
-            # 无法提取 sub_type/summary 等段标记，改为按图片 URL 特征 / 配置判定。
+            # 该分支按图片 URL 特征和收录配置判定表情。
             if self.is_qqofficial_event(event):
                 img_ref = self._normalize_str(getattr(img, "file", "")) or self._normalize_str(
                     getattr(img, "url", "")

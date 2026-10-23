@@ -1,4 +1,4 @@
-"""v3 external source protocol, safety, provenance, and import tests."""
+"""验证外部源协议、访问安全、来源追踪和导入流程。"""
 
 from __future__ import annotations
 

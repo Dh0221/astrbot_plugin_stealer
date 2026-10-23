@@ -39,8 +39,7 @@ except Exception:
 class ImageProcessorService:
     """图片处理服务类，负责处理所有与图片相关的操作。"""
 
-    # 分类迁移映射表（用于自动迁移旧版本数据）
-    # 从前前版本迁移到新版本(17分类)
+    # 分类 key 迁移映射，用于移动分类文件及更新索引记录。
     CATEGORY_MIGRATION_MAP = {
         "smirk": "troll",  # 坏笑 -> 发癫
     }
@@ -390,8 +389,7 @@ class ImageProcessorService:
             categories: 分类列表
             content_filtration: 是否进行内容过滤
             is_platform_emoji: 是否为平台标记的表情包
-            to_pending: 自动收集先保存原图及本地元数据，人工通过后后台识图。
-                不写图库与向量；force_capture/工具/WebUI 继续直接分析。
+            to_pending: 是否将原图及本地元数据保存到待审核池，等待人工通过后后台识图。
 
         Returns:
             tuple: (是否成功, 图片索引)
@@ -734,8 +732,7 @@ class ImageProcessorService:
     ) -> tuple[bool, str]:
         """LLM 自行打标后直接入库，跳过 VLM 分类。
 
-        仍然执行哈希计算、去重检查、文件存储和索引更新。
-        从数据库加载完整索引，合并后写回，不会覆盖已有数据。
+        执行哈希计算、去重检查和文件存储，将标注合并到索引后写入数据库。
 
         Returns:
             (成功与否, 结果消息)
@@ -828,7 +825,7 @@ class ImageProcessorService:
         Returns:
             tuple: (category, tags, desc, emotion, scenes, overlay_text, emotions)
         """
-        # 路径验证（单一入口，_call_vision_model 不再重复）
+        # 调用视觉模型前验证输入文件。
         file_path = os.path.abspath(file_path)
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"分类图片时文件不存在: {file_path}")
@@ -866,7 +863,7 @@ class ImageProcessorService:
 
     @staticmethod
     def _probe_image_metadata(file_path: str) -> dict[str, Any]:
-        """探测图片元数据：宽高、格式、字节数（v5 元数据列）。
+        """探测图片宽高、格式和字节数。
 
         失败时静默返回空 dict（不阻塞入库）。
         """

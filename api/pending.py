@@ -112,10 +112,9 @@ class PendingRoutes:
         return await self._promote_one(db, pending_id)
 
     async def _promote_one(self, db, pending_id: int) -> tuple[bool, str]:
-        """审核通过单条：pending 文件 → categories/，写 emoji+tag+scene，删 pending 行。
+        """发布待审核图片并提交分类、标签、场景等元数据，成功后刷新检索索引。
 
-        原子性：文件 move 成功 → 写 emoji；emoji 写入失败 → 文件移回 pending，视为本次失败。
-        embedding 在阶段 4 接入，此处不写向量。
+        文件发布与元数据提交通过补偿流程处理失败。
         """
         row = db.get_pending(pending_id)
         if not row:

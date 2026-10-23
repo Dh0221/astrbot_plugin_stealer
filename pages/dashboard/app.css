@@ -80,7 +80,7 @@
     --sidebar-width: 180px;
     --sidebar-expanded: 220px;
     --header-height: 72px;
-    /* ── 排版尺度：全站文字只允许这 7 级，行高三档 ── */
+    /* ── 排版尺度：定义七级字号和三档行高 ── */
     --font-display: 'Cinzel', 'Noto Sans SC', -apple-system, 'Segoe UI', sans-serif;
     --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
     --fs-2xs: 0.6875rem;   /* 11px 徽标 · 角标 · kbd */
@@ -3051,7 +3051,7 @@ input, select, textarea {
     }
 }
 
-/* 桌面端：分区导航在页头，侧栏不再重复 */
+/* 桌面端在页头显示分区导航，并隐藏侧栏中的对应控件。 */
 @media (min-width: 769px) {
     .section-switcher {
         display: none;
@@ -3553,7 +3553,7 @@ input, select, textarea {
     border-color: #f87171;
 }
 
-/* issue #87: 审核区编辑按钮（与主库 edit-btn 共用主色变量） */
+/* 审核区编辑按钮使用与主库编辑按钮相同的主色变量。 */
 .pending-btn.edit-btn {
     border-color: rgba(var(--accent-rgb), 0.35);
     color: var(--gold-dim, #b89a5f);
@@ -3953,7 +3953,7 @@ input, select, textarea {
 
 /* ═══════════════════════════════════════════════════════════
    游戏背包主题（Minecraft / Fallout 4）
-   只挂在 data-theme 上，原版暗金 / 午夜蓝 / 亮色 / 樱花粉不改。
+   通过 data-theme 选择器设置 Minecraft 和 Fallout 4 的组件外观。
    ═══════════════════════════════════════════════════════════ */
 
 @font-face {
@@ -5374,7 +5374,7 @@ html[data-theme="minecraft"],
     background: repeating-linear-gradient(90deg, #ffd15a 0 6px, #8a6a18 6px 8px);
 }
 
-/* v3 external source control room */
+/* 外部表情包源管理面板 */
 .source-modal {
     width: min(1040px, 94vw);
     max-height: min(900px, 92vh);

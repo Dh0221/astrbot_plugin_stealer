@@ -47,11 +47,7 @@ class ImageDownloadService:
             self._aiohttp_session = None
 
     def build_headers(self) -> dict[str, str]:
-        """构建下载请求头。
-
-        历史原因：这里曾为 NapCat 下发 Authorization header，但 NapCat 的
-        图片 URL 已经是本地可访问路径或不需要该 token，且把 token 附加到
-        任意第三方图片 URL 会导致安全/兼容问题，因此不再附加任何认证头。
+        """返回空的下载请求头，避免向图片地址发送平台认证信息。
         """
         return {}
 

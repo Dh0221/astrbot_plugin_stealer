@@ -86,7 +86,7 @@ class NaturalEmotionAnalyzer:
         self.plugin = plugin_instance
         # 标记：上一次分析是否为模型主动 abstain
         self.last_analysis_abstained: bool = False
-        # v2.7.5+：配置统一通过 plugin_config 读取
+        # 通过插件配置读取模型和分类设置。
         self.plugin_config = plugin_instance.plugin_config
         self.categories: list[str] = self.plugin_config.get_categories()
 

@@ -59,7 +59,7 @@ class TestRequiredFields:
 
 class TestVersion:
     def test_version_has_no_v_prefix(self):
-        # 最新规范：版本号不要加 v 前缀
+        # 验证插件版本号使用不带 v 前缀的格式。
         assert not str(_load_metadata()["version"]).startswith("v")
 
     def test_astrbot_version_is_pep440_without_v_prefix(self):
@@ -90,11 +90,7 @@ class TestPlatforms:
             assert platform in ADAPTER_NAME_2_TYPE_KEYS, f"未知平台适配器 key: {platform}"
 
 class TestDiscoveryFields:
-    """新规范/社区实践中的可选展示字段（tags/category/author_url/help/pages）。
-
-    参考：https://github.com/menglimi/astrbot_plugin_private_companion/blob/main/metadata.yaml
-    AstrBot 核心仅强校验 name/desc/version/author，多余字段忽略不报错，
-    这些字段主要供市场卡片、注册表与前端展示消费。
+    """验证市场卡片、注册表和前端展示使用的元数据字段。
     """
 
     def test_tags_present_and_non_empty(self):

@@ -1,10 +1,6 @@
-"""嵌入向量服务：封装 AstrBot EmbeddingProvider + FaissVecDB / numpy 降级。
+"""封装 AstrBot 嵌入提供商，管理向量存储、维度校验、语义检索和批量回填。
 
-参考 astrbot_plugin_livingmemory 的实现模式：
-- Provider 获取：context.get_all_embedding_providers() / provider_manager.inst_map
-- 向量存储：优先 FaissVecDB，不可用时降级 SQLite + numpy
-- 维度校验：provider 切换时自动清理旧索引
-- 回填：启动时为已有 emoji 批量补算向量
+向量存储优先使用 FaissVecDB，不可用时使用 SQLite 和 numpy。
 """
 
 import asyncio
@@ -25,7 +21,7 @@ from .embedding_provider_adapter import EmbeddingProviderAdapter
 class EmbeddingService:
     """嵌入向量服务。
 
-    两层架构（对齐 livingmemory 的 FaissVecDB 模式）：
+    向量存储分为两层：
     1. 优先 FaissVecDB（astrbot.core.db.vec_db.faiss_impl.vec_db）
     2. 降级 SQLite emoji_embedding 表 + numpy 内存矩阵
     """
@@ -38,7 +34,7 @@ class EmbeddingService:
         self._provider: Any | None = None
         self._provider_dim: int = 0
 
-        # Provider 负缓存：同一配置下未找到时不再重复探测/打印日志
+        # 缓存当前配置下未找到提供商的结果。
         self._provider_not_found: bool = False
         self._last_enable_embedding_search: bool | None = None
         self._last_embedding_provider_id: str | None = None
@@ -62,7 +58,7 @@ class EmbeddingService:
         self._faiss_operation_lock = asyncio.Lock()
 
     # ═══════════════════════════════════════════════════
-    #  Provider（对齐 livingmemory _initialize_providers）
+    #  嵌入提供商查找
     # ═══════════════════════════════════════════════════
 
     def _embedding_enabled(self) -> bool:
@@ -98,7 +94,7 @@ class EmbeddingService:
 
         provider_id = getattr(self.plugin, "embedding_provider_id", None) or ""
 
-        # 1. 按 ID 查找（对齐 livingmemory _initialize_providers）
+        # 1. 按配置的 ID 查找嵌入提供商。
         if provider_id:
             provider = self._find_provider_by_id(provider_id)
             if provider is not None:
@@ -140,7 +136,7 @@ class EmbeddingService:
         return None
 
     def _find_provider_by_id(self, provider_id: str) -> Any | None:
-        """按 ID 查找 provider（对齐 livingmemory 的静默查找模式）。"""
+        """按 ID 查找提供商，查找失败时返回 None。"""
         # 静默查找：直接读 provider_manager.inst_map，避免 AstrBot 的 warning 日志
         try:
             pm = getattr(self.plugin.context, "provider_manager", None)
@@ -162,7 +158,7 @@ class EmbeddingService:
 
     @staticmethod
     def _is_embedding_provider(provider: Any) -> bool:
-        """校验 provider 是否为 EmbeddingProvider 类型（对齐 livingmemory isinstance 检查）。"""
+        """检查提供商类型；类型定义不可导入时检查 get_embedding 方法。"""
         try:
             from astrbot.core.provider.provider import EmbeddingProvider
             return isinstance(provider, EmbeddingProvider)
@@ -261,7 +257,7 @@ class EmbeddingService:
         return False
 
     # ═══════════════════════════════════════════════════
-    #  FaissVecDB（对齐 livingmemory _complete_initialization）
+    #  FaissVecDB 向量存储
     # ═══════════════════════════════════════════════════
 
     def _init_faiss(self) -> bool:
@@ -362,7 +358,7 @@ class EmbeddingService:
             self._fallback_loaded = True
             return
 
-        # 构建 numpy 矩阵（对齐 livingmemory 的向量加载模式）
+        # 将数据库中的向量构建为 numpy 矩阵。
         vectors = []
         paths = []
         dim = self._effective_dim(provider) if provider is not None else 0
@@ -383,7 +379,7 @@ class EmbeddingService:
 
         if vectors:
             mat = np.stack(vectors, axis=0)
-            # L2 归一化（对齐 livingmemory 的余弦相似度计算）
+            # 对向量执行 L2 归一化，以点积计算余弦相似度。
             norms = np.linalg.norm(mat, axis=1, keepdims=True)
             norms = np.where(norms == 0, 1.0, norms)
             self._fallback_matrix = mat / norms
@@ -396,8 +392,7 @@ class EmbeddingService:
         self._fallback_loaded = True
 
     def _check_fallback_dimension(self) -> bool:
-        """对齐 livingmemory _check_and_fix_dimension_mismatch：
-        检查降级矩阵维度是否与当前 provider 匹配，不匹配则清空。
+        """检查降级矩阵维度是否与提供商匹配，不匹配时清空矩阵并等待回填。
         """
         if self._fallback_dim == 0 or self._provider_dim == 0:
             return True  # 无法判断，继续使用
@@ -418,7 +413,7 @@ class EmbeddingService:
     # ═══════════════════════════════════════════════════
 
     async def initialize(self) -> None:
-        """异步初始化（对齐 livingmemory 的 initialize 流程）。"""
+        """异步初始化嵌入提供商及其向量存储。"""
         # 开关关闭时完全跳过，不探测 provider、不输出日志
         if not self._embedding_enabled():
             return
@@ -477,7 +472,7 @@ class EmbeddingService:
         )
 
     async def insert_emoji(self, path: str, entry: dict[str, Any]) -> bool:
-        """插入单条 emoji 向量（对齐 FaissVecDB.insert 模式）。
+        """计算并存储单张表情包的文本向量。
 
         失败不阻塞入库流程。
         """
@@ -494,7 +489,7 @@ class EmbeddingService:
         if not text:
             return False
 
-        # 截断超长文本（对齐 livingmemory _MAX_CONTENT_CHARS = 4000）
+        # 将待嵌入文本截断到 4000 字符。
         if len(text) > 4000:
             text = text[:4000]
 
@@ -572,7 +567,7 @@ class EmbeddingService:
     # ═══════════════════════════════════════════════════
 
     async def search(self, query: str, k: int = 80) -> list[tuple[str, float]]:
-        """向量检索 top-K（对齐 FaissVecDB.retrieve 模式）。
+        """按向量相似度检索前 K 张表情包。
 
         Returns:
             [(path, similarity_score), ...]  按相似度降序
@@ -584,7 +579,7 @@ class EmbeddingService:
         except Exception:
             return []
 
-        # 截断查询（对齐 livingmemory _MAX_QUERY_CHARS = 2000）
+        # 将查询文本截断到 2000 字符。
         processed = query[:2000] if len(query) > 2000 else query
 
         # FaissVecDB 路径
@@ -700,7 +695,7 @@ class EmbeddingService:
         self._fallback_paths = []
 
     # ═══════════════════════════════════════════════════
-    #  回填（对齐 livingmemory 的批量重建模式）
+    #  缺失向量批量回填
     # ═══════════════════════════════════════════════════
 
     async def backfill_existing(self, batch_size: int | None = None) -> int:

@@ -9,7 +9,7 @@ from typing import Any
 
 
 class SourceRepository:
-    # ── 外部源注册表（v3 additive schema） ──
+    # ── 外部源注册表 ──
 
     @staticmethod
     def _decode_json_object(value: Any) -> dict[str, Any]:

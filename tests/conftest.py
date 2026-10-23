@@ -1,6 +1,5 @@
 """
-pytest 配置文件 - 统一管理 astrbot API stubs
-所有测试必须使用此文件定义的共享 stubs 类
+为 pytest 提供共享的 AstrBot API 替身和隔离的测试目录。
 """
 
 import sys
@@ -17,7 +16,7 @@ sys.modules.setdefault("tests.conftest", sys.modules[__name__])
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-# 定义共享的 stubs 类（所有测试必须使用这些类）
+# 定义测试共用的 AstrBot API 替身。
 class _SharedImage:
     """所有测试共享的 Image stub 类"""
 

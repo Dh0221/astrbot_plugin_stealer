@@ -220,7 +220,7 @@ class CommandHandler:
             except ValueError:
                 pass
 
-            # 同步 sqlite 查询丢线程池，避免阻塞事件循环（best practice）
+            # 在线程池执行同步 SQLite 查询，避免阻塞事件循环。
             stats = await asyncio.to_thread(db.get_tag_stats, top_n)
 
             lines: list[str] = []

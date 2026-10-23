@@ -172,7 +172,8 @@ class JevSelector:
         }
         started = time.perf_counter()
         try:
-            async with aiohttp.ClientSession() as session:
+            # 复用 AstrBot 写入环境的代理设置，并遵守 no_proxy。
+            async with aiohttp.ClientSession(trust_env=True) as session:
                 async with session.post(
                     self.api_url(self.plugin.plugin_config),
                     json=body,

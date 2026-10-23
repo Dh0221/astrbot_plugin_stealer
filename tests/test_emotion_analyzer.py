@@ -1,11 +1,4 @@
-"""PR #91: NaturalEmotionAnalyzer unit tests.
-
-Covers:
-- emotion analysis template is the bundled default (user config is ignored)
-- {emotion_list} / {llm_reply} / {user_message} placeholders
-- model "none" abstain behavior (_EMOTION_ABSTAIN / last_analysis_abstained)
-- _parse_emotion_result parsing
-- reply analysis abstain short-circuit
+"""验证语境分析器的模板加载、占位符替换、情绪解析及模型弃选处理。
 """
 
 import sys
@@ -78,8 +71,7 @@ class TestTemplateLoading:
         assert "{user_message}" not in prompt
 
     def test_legacy_unescaped_prompt_renders_without_key_error(self):
-        # 旧版本 _conf_schema.json 默认值里的输出示例带有未转义 JSON 花括号，
-        # 使用 .format() 会把 {query} 当成占位符导致 KeyError。
+        # 验证模板中的 JSON 花括号按原样输出，支持的占位符正常替换。
         cfg = PluginConfig(
             {"emotion_analysis_prompt": _EMOTION_ANALYSIS_DEFAULT_TEMPLATE}
         )

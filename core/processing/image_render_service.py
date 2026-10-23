@@ -86,7 +86,7 @@ class ImageRenderService:
             if PILImage is None:
                 return await self.file_to_base64(file_path)
 
-            # 非 GIF 动图转换限制常量：不改尺寸不改 optimize。
+            # 非 GIF 动图转换为 GIF 时最多抽取 30 帧。
             MAX_FRAMES = 30
 
             def _sync_convert_to_gif(fp: str) -> str:

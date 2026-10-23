@@ -73,7 +73,7 @@ class PluginConfig(BaseModel):
     embedding_provider_id: str = ""  # 嵌入模型；留空则尝试框架首个 embedding provider
     model_request_interval: float = 5.0  # 同一模型提供商请求串行，开始时间至少间隔此秒数
 
-    # === 外部表情包源（v3） ===
+    # === 外部表情包源 ===
     external_sources_enabled: bool = True
     external_source_allow_http: bool = False
     external_source_default_review: bool = False
@@ -150,16 +150,12 @@ class PluginConfig(BaseModel):
     # === 待审核池 ===
     # 自动偷取时是否进入待审核池等待人工通过。
     # True：进入 pending，需在 WebUI 审核区通过后才入库（默认，安全）。
-    # False：跳过审核，自动入库（issue #89，方便"看到就收"的用户）。
+    # False：跳过人工审核，自动分析并入库。
     audit_required: bool = True
 
     # WebUI 默认主题：auto/dark/light/minecraft/fallout。页面内切换后写入 KV，优先于该项。
     webui_theme: str = "auto"
     show_advanced_settings: bool = False
-
-    # === 内部状态 (不作为 Pydantic 字段) ===
-    # 使用 PrivateAttr 或在 __init__ 中设置且不包含在 __annotations__ 中
-    # 但 Pydantic v1/v2 处理方式不同。这里使用 __private_attributes__ 机制或直接忽略
 
     # 忽略额外字段（Pydantic v2 model_config）
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
@@ -394,10 +390,8 @@ class PluginConfig(BaseModel):
     ) -> tuple[list[str], dict[str, dict[str, str]], dict[str, str]]:
         """将旧版中文/不安全分类 key 收敛为安全 key，保留中文显示信息。
 
-        3.1.0 开始分类 key 用作目录名并执行便携路径校验。旧版本允许中文
-        key，直接在启动时校验会阻止整个插件加载，因此这里先生成稳定迁移名。
-        已知情绪名称优先复用现有英文 key；无法推断的自定义 key 使用内容哈希，
-        避免引入拼音依赖或产生不稳定的 transliteration。
+        分类 key 用作目录名，中文或不符合命名规则的值会转换为稳定的安全 key。
+        已知情绪名称映射到现有英文 key，自定义名称通过内容哈希生成 key。
         """
         raw_keys: list[str] = []
         for value in [*(categories or []), *((info or {}).keys())]:

@@ -210,7 +210,7 @@ class TestSearchOperations:
 
 
 class TestPendingUpdate:
-    """issue #87: 待审核区信息修改（DB 层）。"""
+    """验证数据库中待审核图片的元数据更新。"""
 
     @pytest.fixture
     def db(self, tmp_path: Path):
@@ -673,7 +673,7 @@ class TestStats:
 
 
 class TestPendingPool:
-    """待审核池分页 / 哈希回退（PR #90 修复）。"""
+    """验证待审核池分页及按哈希查找记录。"""
 
     @pytest.fixture
     def db(self, tmp_path: Path):
@@ -692,7 +692,7 @@ class TestPendingPool:
     def test_get_pending_paginated_keeps_all_category_counts_when_filtered(
         self, db: DatabaseService
     ):
-        """PR #90：按分类筛选时，分类计数不应再被同一分类条件锁死。"""
+        """验证分类计数覆盖全部分类，不受当前分类筛选条件限制。"""
         self._insert(db, path="/data/pending/a.jpg", hash="ha", category="happy")
         self._insert(db, path="/data/pending/b.jpg", hash="hb", category="happy")
         self._insert(db, path="/data/pending/c.jpg", hash="hc", category="sad")

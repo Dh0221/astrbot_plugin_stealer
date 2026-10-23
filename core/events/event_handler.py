@@ -69,11 +69,11 @@ class EventHandler:
     async def _download_to_temp(
         self, url: str, *, log_download: bool = False
     ) -> tuple[str | None, bool]:
-        """从 URL 下载文件到临时文件（已迁移到 ImageDownloadService）。"""
+        """委托 ImageDownloadService 将 URL 内容下载到临时文件。"""
         return await self._image_download_service.download_to_temp(url, log_download=log_download)
 
     async def _download_url_to_temp(self, url: str) -> tuple[str | None, bool]:
-        """从 URL 下载文件到临时文件（已迁移到 ImageDownloadService）。"""
+        """委托 ImageDownloadService 将 URL 内容下载到临时文件。"""
         return await self._image_download_service.download_url_to_temp(url)
 
     # ===== EventHandler 核心逻辑 =====
@@ -110,11 +110,7 @@ class EventHandler:
         return True
 
     def mark_processing_started(self) -> None:
-        """后台 worker 开始实际处理时调用。
-
-        cooldown 模式必须覆盖真实处理开始时间，而不是仅覆盖入队时间；
-        否则慢 VLM 下消息仍会在冷却窗口后持续入队，worker 随后连续处理，
-        冷却间隔会失去意义。
+        """后台任务开始处理图片时，将冷却模式的计时起点更新为当前时间。
         """
         try:
             steal_mode = self.plugin.plugin_config.steal_mode
@@ -684,7 +680,7 @@ class EventHandler:
             return
         if not plugin_instance.steal_meme and not force_active:
             return
-        # audit_required=True → 自动偷取进 pending 池（issue #89：默认）
+        # audit_required=True → 自动偷取的图片进入待审核池。
         # audit_required=False → 跳过审核，直接入库
         cfg = getattr(plugin_instance, "plugin_config", None)
         audit_required = bool(getattr(cfg, "audit_required", True)) if cfg else True

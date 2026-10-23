@@ -77,14 +77,13 @@ def _build_main(chance: float) -> Main:
     main = Main.__new__(Main)
     main.auto_send_meme = True
     main.meme_chance = chance
-    # v2.7.5+ 起配置通过 plugin_config 读取；测试桩用 SimpleNamespace 模拟
+    # 用 SimpleNamespace 模拟插件配置。
     main.plugin_config = types.SimpleNamespace(
         enable_natural_emotion_analysis=False,
         steal_meme=True,
         auto_send_meme=True,
     )
-    # v2.7.5+ 起调用方走 index_manager；测试桩挂一个空实现，
-    # 后续各测试可按需覆盖 load_index / save_index / rebuild_index_from_files
+    # 为索引管理器提供可由各测试替换的异步空实现。
 
     async def _async_empty_dict():
         return {}
@@ -285,7 +284,7 @@ class AutoEmojiFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("search_emoji", send_doc)
 
     async def test_emoji_selector_no_probability_check(self):
-        """验证 MemeSelector.try_send_emoji 不再检查概率，由 Main 在调用前完成判定"""
+        """验证概率门控在 Main 中执行，选择器负责选图和发送。"""
         main = _build_main(0.0)  # 概率为 0
         event = DummyEvent()
 
@@ -373,7 +372,7 @@ class AutoEmojiFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(source, "llm_tool")
 
     async def test_steal_tool_resolves_relative_path_to_message_image(self):
-        """issue #88: LLM 传 ./image.png 相对路径时应当映射回当前消息中的真实 URL。"""
+        """验证相对路径图片引用解析为当前消息中的真实 URL。"""
         main = _build_main(1.0)
         message_image_cls = sys.modules[Main.__module__].MessageImage
 

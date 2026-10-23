@@ -80,7 +80,7 @@ async def test_bridge_js_and_static_assets_served():
 
 
 def test_grid_does_not_prefetch_originals_on_hover():
-    """issue #101：列表只渲染缩略图，hover 不得预取原图（大 GIF 会卡死）。"""
+    """验证列表展示缩略图，悬停时使用提示信息而不预取原图。"""
     template = (DASHBOARD_DIR / "template.js").read_text(encoding="utf-8")
     app_js = (DASHBOARD_DIR / "app.js").read_text(encoding="utf-8")
     assert '@mouseenter="loadOriginalImage' not in template
@@ -189,7 +189,7 @@ const { pathToFileURL } = require('url');
 
 
 def test_light_theme_character_filter_uses_readable_surface():
-    """issue #108：亮色主题的角色筛选栏不得继续使用暗色工具栏渐变。"""
+    """验证亮色主题的角色筛选栏使用对应的背景和边框颜色。"""
     css = (DASHBOARD_DIR / "app.css").read_text(encoding="utf-8")
     selector = '[data-theme="light"] .character-filter-bar'
     start = css.index(selector)
@@ -209,7 +209,7 @@ def test_dashboard_font_assets_are_pinned():
 
 
 def test_fallout_theme_avoids_fullpage_compositing():
-    """辐射 4 主题不得用全屏 mix-blend / 图片 filter，避免详情弹窗合成卡死。"""
+    """验证辐射 4 主题的组件、装饰资源及合成效果配置。"""
     css = (DASHBOARD_DIR / "app.css").read_text(encoding="utf-8")
     template = (DASHBOARD_DIR / "template.js").read_text(encoding="utf-8")
     start = css.find('[data-theme="fallout"]')

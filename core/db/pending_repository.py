@@ -67,7 +67,7 @@ class PendingRepository:
                         meta.get("scope_mode", "public"),
                         "pending",
                         created_at,
-                        "",  # tags_text 已废弃（v5 改关联表）
+                        "",  # 标签从关联表读取，tags_text 列写入空值。
                         "",  # scenes_text 已废弃
                         meta.get("source_url"),
                         meta.get("original_name"),
@@ -365,7 +365,7 @@ class PendingRepository:
         if not clean_fields:
             return None
 
-        # tags/scenes 拆分出来走关联表（不再写 tags_text/scenes_text 列）
+        # tags/scenes 分别写入标签和场景关联表。
         new_tags = clean_fields.pop("tags", None)
         new_scenes = clean_fields.pop("scenes", None)
         if "emotions" in clean_fields:

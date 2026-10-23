@@ -36,10 +36,9 @@ def normalize_scope_mode(
     *,
     default: str | None = "public",
 ) -> str | None:
-    """把作用域及其历史别名统一为 ``public`` / ``local``。
+    """把作用域名称及其别名统一为 ``public`` / ``local``。
 
-    ``default=None`` 适合需要区分“无效输入”的命令参数校验；持久化与读取
-    场景使用默认的 ``public``，保持旧数据的安全回退语义。
+    无法识别的输入返回 default；默认返回 ``public``，传入 ``None`` 时返回 ``None``。
     """
     raw = str(value or "").strip().lower()
     if raw in _PUBLIC_SCOPE_ALIASES:

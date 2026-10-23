@@ -1,4 +1,4 @@
-"""PR #90: PluginAPI 待审核分类列表构建（_build_categories_list）。"""
+"""验证 PluginAPI 构建待审核分类列表及数量统计。"""
 
 import io
 import sys

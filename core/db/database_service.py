@@ -1,10 +1,4 @@
-"""SQLite 数据库服务，用于存储表情包索引。
-
-替代原有的 JSON 文件存储，提供：
-- 增量更新（单行 UPDATE，而非全量重写）
-- 索引查询（快速搜索）
-- 事务支持（并发安全）
-- 低内存占用（无需全量驻留）
+"""SQLite 数据库服务，负责表情包索引的存储、查询、增量更新和事务提交。
 """
 
 import asyncio
@@ -446,7 +440,7 @@ class DatabaseService(
             return row is not None
 
     def get_phash_map(self) -> dict[str, str]:
-        """只返回 path→phash 映射，用于感知哈希去重（轻量替代全量索引）。"""
+        """返回用于感知哈希去重的 path→phash 映射。"""
         with self._get_connection() as conn:
             rows = conn.execute(
                 "SELECT path, phash FROM emoji WHERE phash IS NOT NULL AND phash != ''"
@@ -826,10 +820,7 @@ class DatabaseService(
             return self._read_index(conn, list(dict.fromkeys(paths)))
 
     async def save_index(self, idx: dict[str, Any]) -> None:
-        """保存索引（兼容旧接口，用于迁移过渡）。
-
-        注意：此方法会清空数据库并重新插入，仅用于兼容过渡，
-        新代码应使用 insert_emoji / insert_batch。
+        """用传入的索引替换数据库内容，先清空数据再批量插入。
         """
         emojis = []
         for path, meta in idx.items():
@@ -843,8 +834,7 @@ class DatabaseService(
     async def sync_index(self, idx: dict[str, Any]) -> list[str]:
         """增量同步索引到数据库（仅插入/更新，不删除）。
 
-        删除已移交 MaintenanceService 通过孤儿扫描处理，
-        避免并发 on_message 时误删其他消息刚入库的条目。
+        未出现在输入索引中的记录保留，由 MaintenanceService 的孤儿扫描清理失效记录。
         """
         async with self._write_lock:
             return await asyncio.to_thread(self._sync_index_sync, idx)

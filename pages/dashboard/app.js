@@ -173,7 +173,7 @@ createApp({
         const vlmReanalysisError = ref('');
         const vlmReanalysisResult = ref(null);
 
-        // 审核区编辑弹窗（issue #87）
+        // 审核区编辑弹窗状态
         const pendingEditOpen = ref(false);
         const pendingEditId = ref(null);
         const pendingEditForm = reactive({
@@ -268,7 +268,7 @@ createApp({
         const batchTaskFailed = ref(0);
         let batchPollInterval = null;
 
-        // v3 外部表情包源
+        // 外部表情包源状态
         const sourceOpen = ref(false);
         const sourceLoading = ref(false);
         const sourceList = ref([]);
@@ -1006,7 +1006,7 @@ createApp({
             finally { const ids = new Set(pendingApproving.value); ids.delete(id); pendingApproving.value = ids; }
         };
 
-        // issue #87：审核区编辑
+        // 审核区元数据编辑
         const openPendingEdit = async (item) => {
             if (!item || item.id == null) return;
             pendingEditId.value = item.id;
@@ -2456,7 +2456,7 @@ createApp({
             });
         };
 
-        // v5 元数据展示辅助
+        // 图片元数据展示辅助
         const formatBytes = (bytes) => {
             if (!bytes && bytes !== 0) return '';
             const n = Number(bytes);
@@ -2606,7 +2606,7 @@ createApp({
             allPendingSelected,
             toggleSelectAllPending,
 
-            // issue #87：审核区编辑
+            // 审核区元数据编辑
             pendingEditOpen,
             pendingEditId,
             pendingEditForm,

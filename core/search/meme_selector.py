@@ -113,17 +113,17 @@ class MemeSelector:
     # ===== 门面委托：MemeScopeService =====
 
     def _get_event_target_entry(self, event: AstrMessageEvent | None) -> str:
-        """获取事件目标条目（已迁移到 MemeScopeService）。"""
+        """委托作用域服务获取事件的目标条目。"""
         return self._scope_service._get_event_target_entry(event)
 
     def _is_entry_allowed_for_event(
         self, data: dict | None, event: AstrMessageEvent | None
     ) -> bool:
-        """检查条目是否允许（已迁移到 MemeScopeService）。"""
+        """委托作用域服务检查条目在当前会话是否可见。"""
         return self._scope_service._is_entry_allowed_for_event(data, event)
 
     def is_path_allowed_for_event(self, path: str, event: AstrMessageEvent | None) -> bool:
-        """检查路径是否允许（已迁移到 MemeScopeService）。"""
+        """委托作用域服务检查指定路径在当前会话是否可见。"""
         return self._scope_service.is_path_allowed_for_event(path, event)
 
     def find_similar_categories(self, query: str, top_n: int = 3) -> list[str]:
@@ -301,7 +301,7 @@ class MemeSelector:
     async def search_images(
         self, query: str, *, limit: int = 10, idx: dict | None = None, event=None
     ):
-        """搜索表情包（已迁移到 MemeSmartSelectService）。"""
+        """委托智能选择服务搜索表情包。"""
         return await self._smart_select_service.search_images(
             query, limit=limit, idx=idx, event=event
         )
@@ -309,13 +309,13 @@ class MemeSelector:
     async def smart_search(
         self, query: str, *, limit: int = 10, idx: dict | None = None, event=None
     ):
-        """智能搜索（已迁移到 MemeSmartSelectService）。"""
+        """委托智能选择服务检索并排序表情包候选。"""
         return await self._smart_select_service.smart_search(
             query, limit=limit, idx=idx, event=event
         )
 
     async def send_emoji_message(self, event: AstrMessageEvent, path: str):
-        """发送表情包消息（已迁移到 MemeSmartSelectService）。"""
+        """委托智能选择服务发送指定表情包。"""
         return await self._smart_select_service.send_emoji_message(event, path)
 
     async def send_emoji_with_text(
@@ -362,10 +362,7 @@ class MemeSelector:
         cleaned_text: str,
         *, emotion_weights: dict[str, float] | None = None,
     ) -> bool:
-        """尝试发送表情包。多个情绪作为先验一次召回，不再按桶逐个试。
-
-        注意：概率判定由 Main 在调用前通过 MemeSenderEngine._resolve_with_log 完成，
-        本方法只负责选图和发图。
+        """将多个情绪作为先验召回候选，检查发送权限和回合状态后选图发送。
         """
         event = unwrap_event(event)
         if not self._check_group_allowed(event):

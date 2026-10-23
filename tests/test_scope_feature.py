@@ -109,8 +109,7 @@ class DummyPlugin:
         # 添加 db_service 属性（模拟数据库服务）
         self.db_service = DummyDBService(self.index_map)
 
-        # v2.7.5+ 起调用方走 index_manager；通过 SimpleNamespace 引用方法，
-        # 但绑定为 lambda 形式使其在测试中重新赋值 DummyPlugin._xxx 时能动态跟随。
+        # 通过 lambda 动态调用索引方法，使测试替换方法后委托仍然有效。
         self._build_index_manager()
 
     def _build_index_manager(self) -> None:
@@ -141,7 +140,7 @@ class DummyPlugin:
             setattr(self, key, value)
 
     def update_config(self, updates):
-        # v2.7.5+：公开 API；兼容旧测试名
+        # 将配置更新委托给测试桩的更新方法。
         return self._update_config_from_dict(updates)
 
     def is_send_enabled_for_event(self, event):

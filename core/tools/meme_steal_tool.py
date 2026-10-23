@@ -77,7 +77,7 @@ class MemeStealToolWorkflow:
             if not os.path.exists(temp_path):
                 hint = ""
                 # 当 LLM 传来的是非 URL 形式（相对路径/裸文件名）且仍无法定位时，
-                # 提示它从消息中已有的 Image URL 选择（issue #88）。
+                # 返回引导信息，提示从当前消息已有的 Image URL 中选择。
                 ref_value = str(image_ref or "").strip()
                 if ref_value and not (
                     ref_value.startswith("http://")
@@ -152,14 +152,10 @@ class MemeStealToolWorkflow:
         image_ref: str,
         event_handler: Any,
     ) -> tuple[str, str]:
-        """Resolve an explicit or current-message image reference for steal_sticker.
+        """解析显式图片引用或当前消息中的可用图片，返回图片地址及来源类型。
 
-        修复 issue #88：LLM 偶尔会传相对路径（如 ``./image.png``）或仅文件名。
-        之前的实现直接把 ``explicit_ref`` 原样返回，下游 ``os.path.abspath``
-        会拼到 CWD（如 ``/AstrBot/image.png``），触发"图片文件不存在"。
-
-        现在对非 URL 形式的 ``image_ref``，优先在当前消息的 ``Image`` 组件中
-        按 basename 匹配，再回退到组件自带的 url/file/path/convert_to_file_path。
+        URL 引用直接返回；路径或文件名优先匹配当前消息中的图片组件，
+        未匹配时从当前消息的可用图片及商城表情地址中查找。
         """
         explicit_ref = str(image_ref or "").strip()
 

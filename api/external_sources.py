@@ -13,7 +13,7 @@ from ..core.util.safe_io import safe_remove_file
 from ..core.sources.models import ExternalSourceError, ExternalSourceSecurityError
 
 class ExternalSourceRoutes:
-    # ── External sources (v3) ────────────────────────────────
+    # ── 外部表情包源 ────────────────────────────────────────
 
     async def _source_json(self) -> dict[str, Any]:
         try:

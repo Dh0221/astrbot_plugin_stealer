@@ -436,7 +436,7 @@ class PluginAPI(
                 "is_favorite": bool(meta.get("is_favorite", 0)),
                 "use_count": meta.get("use_count", 0) or 0,
                 "last_used_at": meta.get("last_used_at", 0) or 0,
-                # v5 元数据列（WebUI 预览面板展示）
+                # WebUI 预览面板使用的图片元数据字段
                 "width": meta.get("width"),
                 "height": meta.get("height"),
                 "format": meta.get("format"),

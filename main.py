@@ -65,7 +65,6 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
     MAX_SEARCH_RESULTS = 5  # 搜索表情包最大返回数量（避免 FC 输出过长）
     AUTO_EMOJI_COOLDOWN_SECONDS = 20  # 同一会话自动发表情的最短间隔
 
-    # 从外部文件加载的提示词（已迁移到ImageProcessorService）
 
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
@@ -79,7 +78,6 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         self.cache_dir: Path = self.plugin_config.cache_dir
 
         # 配置统一通过 self.plugin_config 读取（pydantic 模型）。
-        # v2.7.5+ 删除了 _sync_all_config() 实例属性镜像。
 
         # 初始化核心服务类
         self.db_service = DatabaseService(self.cache_dir / "emoji.db")
@@ -98,7 +96,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         self.meme_selector = MemeSelector(self)
         self.task_scheduler = TaskScheduler()
 
-        # 初始化自然语言情绪分析器（新增）
+        # 初始化自然语言情绪分析器
         self.emotion_analyzer = NaturalEmotionAnalyzer(self)
 
         self.index_manager = IndexManager(self)
@@ -107,14 +105,12 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
 
         # 运行时属性
         self._terminated: bool = False  # 终止标志位，防止重复清理
-        # 强制捕获窗口已迁移到 EventHandler
 
     def __getattr__(self, name: str):
         """将未定义的属性访问自动代理到 plugin_config。
 
-        v2.7.5+ 配置统一通过 plugin_config (Pydantic 模型) 管理，
-        但 core/ 中部分代码仍直接访问 plugin_instance.steal_meme 等。
-        通过 __getattr__ 自动代理，无需逐个修改调用方。
+        将 steal_meme 等配置项的读取委托给 plugin_config，
+        配置尚未初始化或属性不存在时抛出 AttributeError。
         """
         if name == "plugin_config":
             raise AttributeError(f"'{type(self).__name__}' object has no attribute 'plugin_config'")

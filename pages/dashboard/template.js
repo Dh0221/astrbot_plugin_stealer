@@ -1756,7 +1756,7 @@ export const TEMPLATE = `
     </div>
 </div>
 
-<!-- 审核区编辑弹窗（issue #87） -->
+<!-- 审核区图片元数据编辑弹窗 -->
 <div v-if="pendingEditOpen" class="modal-overlay" @click.self="closePendingEdit">
     <div class="modal-panel" role="dialog" aria-modal="true" :aria-label="t('pages.dashboard.modal.edit_pending', 'Edit Pending Sticker')">
         <div class="modal-panel-corner-bl"></div>

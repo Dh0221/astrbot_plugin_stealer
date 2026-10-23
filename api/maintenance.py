@@ -97,7 +97,7 @@ class MaintenanceRoutes:
                     if not isinstance(path, str):
                         continue
                     # stale_index 语义：物理文件已丢失但索引条目仍存在。
-                    # 只删索引条目，绝不删文件——文件已经不在了。
+                    # 删除文件已不存在的索引条目。
                     try:
                         file_exists = Path(path).resolve().is_file()
                     except Exception:

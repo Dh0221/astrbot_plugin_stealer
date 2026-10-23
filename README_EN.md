@@ -24,7 +24,7 @@
 
 ## 📢 Introduction
 
-Inspired by maibot's emoji-stealing approach and the former meme-manager tag-injection mechanism (deprecated in the current version), this [AstrBot](https://github.com/AstrBotDevs/AstrBot) entertainment plugin adds LLM-callable meme tools.
+Inspired by maibot and meme-manager, this [AstrBot](https://github.com/AstrBotDevs/AstrBot) entertainment plugin provides LLM-callable meme tools.
 
 Emoji Stealer collects images from chat, uses a vision model for semantic and emotion labels, and sends a matching meme according to probability, cooldown, intent, and target-filter rules. Collection and auto-send can be toggled independently.
 
@@ -37,7 +37,7 @@ The plugin is open source and free to use. Issues and pull requests are welcome 
 | **Auto Steal** | Monitor group-chat images and collect them by probability or cooldown, with a pending-pool capacity limit |
 | **Pending Review Pool** | Route automatically collected images through a review queue before adding them to the library |
 | **Smart Classification** | VLM extracts image text, description, scenes, and emotion; GIFs use nine evenly sampled frames in a 3×3 timeline storyboard |
-| **Semantic Search** | Search over visible text, descriptions, and reply scenes; optional remote Embedding improves recall, with BM25 fallback and no local CLIP |
+| **Semantic Search** | Search over visible text, descriptions, and reply scenes; optional remote Embedding improves recall, with BM25 fallback |
 | **Emotion Matching** | Analyze the Bot reply and append a mood-matched meme after it |
 | **LLM Proactive Selection** | `search_meme`, `send_meme`, and `steal_meme` let the LLM search, send, and collect memes |
 | **Dual-Mode Emotion Analysis** | Extract keywords and emotion priors with a lightweight model, or search directly with the reply text; neither mode rewrites the reply |
@@ -120,7 +120,7 @@ HTTPS is required by default. Loopback, private, link-local, and reserved hosts,
 3. The Bot collects and classifies group-chat images.
 4. After each reply, intent, probability, and cooldown gates decide whether to append a matching meme.
 
-LLM emotion mode uses a lightweight model to extract search terms and emotion priors. Passive retrieval searches the reply text directly. Both modes preserve the original reply, and the normal send gates still apply. The LLM can also call the meme tools proactively.
+LLM emotion mode uses a lightweight model to extract search terms and emotion priors. Passive retrieval searches the reply text directly. Automatic sending is controlled by probability, cooldown, and intent gates. The LLM can also call the meme tools proactively.
 
 ### Semi-automatic (for token-constrained setups)
 
@@ -183,6 +183,8 @@ All public settings can be changed in the AstrBot admin panel. Defaults below ma
 | **TypeSafe API Base URL** | `https://api.typesafe.ai` | The official API by default; trusted compatible proxies are accepted, and the API key is sent to this address |
 | **JEV model ID** (`typesafe_model_id`) | `""` | Leave blank or whitespace-only for `jev-latest`; surrounding whitespace is trimmed. Compatible proxies can use their required model ID, such as `typesafe/jev` for Command Code |
 | **Emotion analysis prompt** | `""` | Leave blank for the bundled context prompt; supports `{emotion_list}`, `{llm_reply}`, and `{user_message}` |
+
+JEV requests use the HTTP/HTTPS proxy settings AstrBot writes to the environment and respect the `no_proxy` bypass list. No separate network proxy setting is needed in the plugin.
 
 </details>
 
@@ -255,7 +257,7 @@ Approval returns before vision analysis, allowing continuous review. The review 
 
 | | LLM mode (recommended) | Passive retrieval |
 |:---|:---|:---|
-| **How it works** | A lightweight model extracts search terms and 1–3 emotion priors; probability, cooldown, and intent gates still decide sending | The reply text is used directly as the search query, with no tags injected |
+| **How it works** | A lightweight model extracts search terms and 1–3 emotion priors; probability, cooldown, and intent gates decide sending | The reply text is used directly as the search query |
 | **Effect on replies** | ✅ Does not modify the LLM reply | ✅ Does not modify the LLM reply |
 | **Best for** | Stronger matching with one extra lightweight model call | Tight token budgets or lower latency |
 

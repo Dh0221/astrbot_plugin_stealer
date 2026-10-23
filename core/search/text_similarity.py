@@ -135,7 +135,7 @@ def _normalize_text(text: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
-# 公开 API（保持原有签名兼容）
+# 相似度权重配置 API
 # ──────────────────────────────────────────────────────────────
 
 
@@ -241,7 +241,7 @@ def calculate_cosine_similarity(text1: str, text2: str) -> float:
 
 
 def calculate_hybrid_similarity(text1: str, text2: str) -> float:
-    """混合相似度算法（多策略融合，v2）
+    """融合多种文本特征计算相似度。
 
     融合策略：
     1. n-gram Jaccard（语义词组重叠）
@@ -375,7 +375,7 @@ def _calculate_hybrid_similarity_cached(t1: str, t2: str) -> float:
 
 @lru_cache(maxsize=8192)
 def _extract_words(text: str) -> frozenset[str]:
-    """从文本中提取特征词汇集合（改进版）
+    """从文本中提取特征词汇集合。
 
     中文：unigram + bigram（如 "开心快乐" → {"开", "心", "快", "乐", "开心", "心快", "快乐"}）
     英文：完整单词

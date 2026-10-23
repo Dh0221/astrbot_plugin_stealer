@@ -44,17 +44,15 @@ class DatabaseSchema:
                     (str(self.SCHEMA_VERSION),),
                 )
 
-                # v3: blacklist table created by _create_tables
+                # 记录由 _create_tables 创建的黑名单表已就绪。
                 if current_version < 3:
                     logger.info("[DB] migration: blacklist table ready")
 
-                # v4: 待审核池 emoji_pending / 嵌入向量 emoji_embedding 表
-                # （均由 _create_tables 用 IF NOT EXISTS 创建，此处仅记录）
+                # 记录由 _create_tables 创建的待审核池和嵌入向量表已就绪。
                 if current_version < 4:
                     logger.info("[DB] migration: emoji_pending / emoji_embedding tables ready")
 
-                # v5: emoji/emoji_pending 元数据列 + pending 标签/场景关联表
-                # （关联表由 _create_tables 用 IF NOT EXISTS 创建）
+                # 补齐图片元数据列，并迁移待审核记录的标签和场景。
                 if current_version < 5:
                     self._migrate_v5(conn)
 
@@ -69,14 +67,13 @@ class DatabaseSchema:
                         if column not in columns:
                             conn.execute(f"ALTER TABLE emoji_pending ADD COLUMN {column} {ddl}")
 
-            # v3 external-source schema is additive and intentionally runs for
-            # every database, including databases already at schema version 6.
+            # 为每个数据库补齐外部源表结构和检索修订信息。
             self._ensure_external_schema(conn)
             self._ensure_search_revision_schema(conn)
             conn.execute("COMMIT")
 
     def _ensure_search_revision_schema(self, conn: sqlite3.Connection) -> None:
-        """v7: transactional revisions and a durable, coalescing vector refresh queue."""
+        """创建图库修订信息和可合并同路径任务的持久化向量刷新队列。"""
         for key in ("library_revision", "corpus_revision"):
             conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES (?, '0')", (key,))
         conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('corpus_id', hex(randomblob(16)))")
@@ -119,7 +116,7 @@ class DatabaseSchema:
 
     def _create_tables(self, conn: sqlite3.Connection) -> None:
         """创建所有数据表。"""
-        # 主表：表情包元数据（v5 起含 reviewed_at 与图片元数据列）
+        # 表情包主表：存储分类、审核时间和图片元数据。
         conn.execute("""
             CREATE TABLE IF NOT EXISTS emoji (
                 path TEXT PRIMARY KEY,
@@ -177,7 +174,7 @@ class DatabaseSchema:
         """)
 
         # 待审核池：on_message 自动偷取先进 pending，人工审核通过后入库
-        # （v5 起含图片元数据列；tags_text/scenes_text 为废弃列，实际标签存关联表）
+        # 图片元数据存于本表，标签和场景存于关联表。
         conn.execute("""
             CREATE TABLE IF NOT EXISTS emoji_pending (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,8 +207,7 @@ class DatabaseSchema:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_category ON emoji_pending(category)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_hash ON emoji_pending(hash)")
 
-        # 待审核池标签/场景关联表（v5，与 emoji_tag/emoji_scene 同构，
-        # 取代 emoji_pending 的 tags_text/scenes_text 逗号拼接列）
+        # 待审核池标签和场景关联表，与正式图库关联表结构一致。
         conn.execute("""
             CREATE TABLE IF NOT EXISTS emoji_pending_tag (
                 path TEXT NOT NULL,
@@ -372,7 +368,7 @@ class DatabaseSchema:
                 )
                 migrated_scenes += cur.rowcount
 
-        # 清空旧列（新代码不再写入；读取时以关联表为准）
+        # 清空已迁入关联表的逗号分隔字段。
         conn.execute("UPDATE emoji_pending SET tags_text = '', scenes_text = ''")
         logger.info(
             f"[DB] 迁移完成 (v5): 元数据列就绪，pending 标签/场景拆分 "
@@ -395,10 +391,7 @@ class DatabaseSchema:
         logger.info("[DB] 迁移完成 (v6): overlay_text / emotions_json / character 就绪")
 
     def _ensure_external_schema(self, conn: sqlite3.Connection) -> None:
-        """Create the additive v3 source registry and retention metadata.
-
-        This method is idempotent and also repairs databases created by older
-        versions where ``_create_tables`` was never called after v6.
+        """幂等创建外部源注册表，并补齐图库和待审核池的来源与保留策略字段。
         """
 
         for table in ("emoji", "emoji_pending"):

@@ -68,5 +68,5 @@ class MemeScopeService:
                 return False
             return self._is_entry_allowed_for_event(data, event)
 
-        # DB 不可用时直接拒绝（不再回退到 cache）
+        # 数据库不可用时拒绝访问该图片。
         return False

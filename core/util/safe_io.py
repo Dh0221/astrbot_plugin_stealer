@@ -1,7 +1,4 @@
-"""安全文件 IO 工具。
-
-从 `Main._safe_remove_file` / `ImageProcessorService.safe_remove_file` 抽出来的独立工具，
-方便插件各模块按需使用，不再依赖 `self.plugin._safe_remove_file` 这种穿透调用。
+"""提供文件安全删除、同名路径分配及图片入库时的文件发布和失败补偿。
 """
 
 import asyncio
@@ -15,7 +12,7 @@ from astrbot.api import logger
 
 
 def unique_image_path(directory: Path, filename: str) -> Path:
-    """Keep the WebUI's existing collision naming policy for all ingestion paths."""
+    """为同名文件追加递增序号，返回未被占用的目标路径。"""
     candidate = directory / filename
     counter = 0
     while candidate.exists():

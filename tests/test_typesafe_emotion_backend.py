@@ -47,6 +47,9 @@ def install_http(monkeypatch, payload=None, status=200, error=None):
             return payload
 
     class Session:
+        def __init__(self, **kwargs):
+            captured["session_kwargs"] = kwargs
+
         async def __aenter__(self):
             return self
 
@@ -176,6 +179,7 @@ async def test_request_contains_ten_metadata_options_and_context(
         reply="终于可以回家啦",
     )
     assert selected == candidates[9][0]
+    assert captured["session_kwargs"]["trust_env"] is True
     body = captured["json"]
     assert captured["url"] == "https://api.typesafe.ai/v1/systemone"
     assert captured["headers"]["Authorization"] == "Bearer test-key"
@@ -335,7 +339,7 @@ async def test_real_ranking_no_shadowing_randomness_or_early_stop(tmp_path):
     assert len(ranked) == 12
     assert all(not idx[item[0]]["blocked"] for item in ranked)
     strategy._update_recent_usage.assert_not_called()
-    # LLM 链路仍可选择并记录最近使用；过去在 entry_category(data) 处直接失败。
+    # 验证 LLM 选择链路返回候选并记录最近使用。
     assert await svc._select_emoji_smart_impl("happy", "下班") in idx
     strategy._update_recent_usage.assert_called_once()
 

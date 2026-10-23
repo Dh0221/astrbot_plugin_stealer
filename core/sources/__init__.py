@@ -1,8 +1,4 @@
-"""External meme source integration for v3.
-
-The source package deliberately depends on a small, documented interchange
-surface.  It can read Meme Manager pack exports and a conservative HTTP JSON
-catalog without importing another plugin's private runtime objects.
+"""读取 Meme Manager 资源包和 HTTP JSON 目录，并提供统一的外部表情包导入接口。
 """
 
 from .models import (
