@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.11] - 2026-10-26
 
+### added
+- 新增外部源 DNS 调度回归测试，覆盖慢解析、线程边界、重定向私网拦截与跨源凭证隔离。
+
 ### fixed
 - 修复外部 HTTP/GitHub 源的 URL 预检在事件循环中同步解析 DNS，导致慢解析阻塞其他会话的问题；保留私网地址拒绝、连接阶段 DNS 校验和重定向安全检查。
 
