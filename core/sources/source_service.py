@@ -180,7 +180,8 @@ class SourceService:
             self._check_inspection_ids(inspection)
             return inspection, reader
         if source_type in {"http", "http_json", "api"}:
-            reader = self._http_reader(spec)
+            # 构造函数包含 DNS 预检，放到线程池避免阻塞其他会话。
+            reader = await asyncio.to_thread(self._http_reader, spec)
             try:
                 inspection = await reader.inspect(
                     cursor=str(spec.get("cursor") or "") or None

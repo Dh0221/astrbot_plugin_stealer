@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import ipaddress
 import json
@@ -352,7 +353,7 @@ class HTTPSource:
         return headers
 
     async def _request_bytes(self, url: str, *, max_bytes: int, accept_json: bool = False) -> bytes:
-        current = validate_source_url(url, allow_http=self.allow_http)
+        current = await asyncio.to_thread(validate_source_url, url, allow_http=self.allow_http)
         for _ in range(4):
             try:
                 import aiohttp  # type: ignore
@@ -381,7 +382,8 @@ class HTTPSource:
                             raise ExternalSourceError(
                                 f"HTTP redirect has no Location header ({response.status})"
                             )
-                        current = validate_source_url(
+                        current = await asyncio.to_thread(
+                            validate_source_url,
                             urljoin(current, location),
                             allow_http=self.allow_http,
                         )

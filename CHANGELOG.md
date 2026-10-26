@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.11] - 2026-10-26
+
+### fixed
+- 修复外部 HTTP/GitHub 源的 URL 预检在事件循环中同步解析 DNS，导致慢解析阻塞其他会话的问题；保留私网地址拒绝、连接阶段 DNS 校验和重定向安全检查。
+
+### English summary
+- External HTTP/GitHub URL and redirect DNS preflight, including HTTP reader construction, now run in worker threads so slow DNS does not block other conversations. Private-address rejection, connection-time DNS validation and credential forwarding protections remain in place.
+
 ## [3.1.10] - 2026-10-26
 
 ### added

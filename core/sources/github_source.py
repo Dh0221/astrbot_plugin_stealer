@@ -195,7 +195,8 @@ class GitHubSource:
         ).hexdigest()[:24]
         target = self.cache_dir / f"github_{key}.zip"
         temporary = self.cache_dir / f".{target.name}.{uuid.uuid4().hex}.part"
-        archive_url = validate_source_url(
+        archive_url = await asyncio.to_thread(
+            validate_source_url,
             f"https://codeload.github.com/{self.owner}/{self.repo}/zip/{quote(self.ref, safe='')}",
             allow_http=False,
         )
@@ -226,7 +227,7 @@ class GitHubSource:
         max_bytes: int,
         accept_json: bool = False,
     ) -> bytes:
-        current = validate_source_url(url, allow_http=False)
+        current = await asyncio.to_thread(validate_source_url, url, allow_http=False)
         initial_origin = _url_origin(current)
         try:
             import aiohttp  # type: ignore
@@ -255,7 +256,8 @@ class GitHubSource:
                                 raise ExternalSourceError(
                                     f"GitHub redirect has no Location header ({response.status})"
                                 )
-                            current = validate_source_url(
+                            current = await asyncio.to_thread(
+                                validate_source_url,
                                 urljoin(current, location), allow_http=False
                             )
                             continue
@@ -293,7 +295,7 @@ class GitHubSource:
             ) from exc
         timeout = aiohttp.ClientTimeout(total=180, connect=15, sock_read=90)
         resolver = _ValidatingResolver(aiohttp.resolver.ThreadedResolver())
-        current = validate_source_url(url, allow_http=False)
+        current = await asyncio.to_thread(validate_source_url, url, allow_http=False)
         initial_origin = _url_origin(current)
         try:
             async with aiohttp.ClientSession(
@@ -313,7 +315,8 @@ class GitHubSource:
                                 raise ExternalSourceError(
                                     f"GitHub redirect has no Location header ({response.status})"
                                 )
-                            current = validate_source_url(
+                            current = await asyncio.to_thread(
+                                validate_source_url,
                                 urljoin(current, location), allow_http=False
                             )
                             continue
