@@ -265,20 +265,32 @@ Character assignment is done manually in the WebUI and remains independent of em
 
 ## 🎮 Command Reference
 
-All commands use the `/meme` prefix.
+Commands below use the default `/` wake prefix as an example; use the prefix configured for your bot.
 
-### Display Commands (everyone)
+### Viewing and Test Sends (everyone)
 
 | Command | Description |
 |:---|:---|
+| `menu` / `help` | Open the role-aware function panel |
 | `status` | View running status and meme statistics |
-| `list [category] [page_size] [page]` | List collected memes (default: 10 per page, page 1) |
-| `emotion_stats` | View emotion-analysis statistics and the current mode |
+| `emotion_stats` | Inspect retrieval-analysis diagnostics |
+| `random` | Ask the bot to send one random meme allowed in the current session |
+
+Use `/meme menu` or `/meme help` to open the panel. Its compact body shows current state; functions are grouped as buttons. Members can view status and request random test sends. AstrBot administrators also see Settings and Maintenance. Official QQ bots, including Webhook adapters, use native callback buttons. Clicks execute directly without sending control commands into chat, invoking the LLM or depending on a wake prefix. Other platforms and failed keyboard requests fall back to text commands generated with the current session's wake prefix. `/` in this documentation is the default-prefix example.
+
+Settings covers collection, automatic delivery, retrieval mode, forced collection and target filters. Maintenance covers collected-image inspection, tag statistics, emotion cache, index rebuilds and cleanup; see the command table below for delete, blacklist and scope usage. Management callbacks reuse existing command services and recheck the current administrator configuration, actor, bot instance and session. Typed commands retain framework permission checks. The `list` command requires administrator access.
+
+Random test sends respect session send filters and meme scope, and avoid images already sent through the same active panel. `/meme random` also works directly. All panel buttons belong to their creator and original session and expire after 5 minutes. Refresh updates displayed state while retaining active-session deduplication. Closing invalidates every button in that panel and keeps the message in chat.
+
+When enabling callbacks for the first time, restart WebSocket adapters so interaction intents are subscribed during connection. Webhook deployments must receive `INTERACTION_CREATE` from QQ. Unloading removes this plugin's handler and tasks while preserving other plugins' callbacks.
+
+If the creator cannot operate a freshly opened panel, inspect `[MemeMenu]` logs. Panel delivery records identify the raw QQ identity source; callback receipt confirms the click reached the plugin. Identity rejection records distinguish `sender`, `group`, `client` and other mismatches. User, group and panel identifiers are hashed. When no receipt is logged, check QQ-side button permissions, the client and event subscriptions before attributing the rejection to the backend.
 
 ### Admin Commands (admins only)
 
 | Command | Description |
 |:---|:---|
+| `list [category] [page_size] [page]` | Inspect memes collected by the bot (default: 10 per page) |
 | `on` / `off` | Enable / disable meme collection |
 | `auto_on` / `auto_off` | Enable / disable auto-send |
 | `clean [force]` | Clean unclassified raw staging images |

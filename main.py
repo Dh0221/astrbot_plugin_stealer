@@ -18,6 +18,7 @@ from astrbot.api.star import Context, Star
 
 from .core.commands.command_handler import CommandHandler
 from .core.commands.image_mgmt_command import ImageManagementCommand
+from .core.commands.meme_menu_command import MemeMenuCommand
 from .core.commands.index_rebuild_command import IndexRebuildCommand
 from .core.commands.target_filter_command import TargetFilterCommand
 from .core.config.config import PluginConfig
@@ -84,6 +85,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         self.source_service = SourceService(self)
         self.command_handler = CommandHandler(self)
         self.image_commands = ImageManagementCommand(self)
+        self.menu_commands = MemeMenuCommand(self)
         self.index_commands = IndexRebuildCommand(self)
         self.target_commands = TargetFilterCommand(self)
         self.web_server = None
@@ -515,7 +517,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
 
     @filter.command_group("meme")
     def meme(self):
-        """表情包管理指令"""
+        """表情包管理指令，功能面板入口：/meme menu"""
         pass
 
     @filter.permission_type(PermissionType.ADMIN)
@@ -617,6 +619,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         async for result in self.command_handler.enforce_capacity(event):
             yield result
 
+    @filter.permission_type(PermissionType.ADMIN)
     @meme.command("list")
     async def list_images(
         self,
@@ -628,6 +631,29 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         """列出已收集的表情包。用法: /meme list [分类] [每页数量] [页码]"""
         async for result in self.image_commands.list_images(event, category, limit, page):
             yield result
+
+    @filter.on_platform_loaded()
+    async def register_menu_interactions(self):
+        """在 QQ 客户端连接前注册面板互动事件。"""
+        self.menu_commands.interactions.register()
+
+    @meme.command("menu", alias={"help"})
+    async def menu_panel(self, event: AstrMessageEvent, section: str = "overview"):
+        """查看功能面板。用法: /meme menu [overview|settings|maintenance]"""
+        await self.menu_commands.show_panel(event, section)
+        event.stop_event()
+
+    @meme.command("random")
+    async def random_menu_image(self, event: AstrMessageEvent, token: str = ""):
+        """随机试发当前会话可用的表情。用法: /meme random"""
+        await self.menu_commands.random_image(event, token)
+        event.stop_event()
+
+    @meme.command("close")
+    async def close_menu(self, event: AstrMessageEvent, token: str = ""):
+        """使当前面板按钮失效。用法: /meme close <面板码>"""
+        await self.menu_commands.dismiss(event, token)
+        event.stop_event()
 
     @filter.permission_type(PermissionType.ADMIN)
     @meme.command("delete")
@@ -863,6 +889,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         __init__ 仅做属性赋值，IO/目录/密码等操作统一在此执行。
         """
         await super().initialize()
+        self.menu_commands.interactions.register()
         try:
             self._validate_config()
             if (
@@ -933,6 +960,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         if self._terminated:
             return
         self._terminated = True
+        await self.menu_commands.aclose()
         await self.index_manager.stop_search_worker()
         try:
             await self.task_scheduler.cancel_task("raw_cleanup_loop")

@@ -58,7 +58,7 @@ def test_meme_command_group_and_expected_subcommands_are_registered():
         "on", "off", "auto_on", "auto_off", "group", "偷",
         "natural_analysis", "emotion_stats", "clear_emotion_cache", "status",
         "tag_stats", "clean", "capacity", "list", "delete", "blacklist",
-        "scope", "rebuild_index",
+        "scope", "rebuild_index", "menu", "random", "close",
     }
 
 
@@ -78,6 +78,36 @@ def test_registered_command_methods_route_to_their_handlers():
         "status", "tag_stats", "clean", "enforce_capacity", "list_images",
         "delete_image", "blacklist_image", "set_image_scope", "rebuild_index",
     } <= delegated
+
+
+def test_public_and_admin_command_permissions_match_function_panel():
+    permissions = {}
+    for node in ast.walk(_main_tree()):
+        if not isinstance(node, ast.AsyncFunctionDef):
+            continue
+        command = None
+        admin = False
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or not decorator.args:
+                continue
+            func = decorator.func
+            if not isinstance(func, ast.Attribute):
+                continue
+            if isinstance(func.value, ast.Name) and func.value.id == "meme" and func.attr == "command":
+                command = decorator.args[0].value
+            if func.attr == "permission_type" and isinstance(decorator.args[0], ast.Attribute):
+                admin = decorator.args[0].attr == "ADMIN"
+        if command:
+            permissions[command] = admin
+    assert {command for command, admin in permissions.items() if not admin} == {
+        "menu", "status", "emotion_stats", "random", "close",
+    }
+    for command in {
+        "on", "off", "auto_on", "auto_off", "偷", "natural_analysis", "group",
+        "list", "tag_stats", "clear_emotion_cache", "rebuild_index", "clean", "capacity",
+        "delete", "blacklist", "scope",
+    }:
+        assert permissions[command], command
 
 
 @pytest.mark.asyncio

@@ -17,13 +17,15 @@ tags:
 help: |
   基于多模态 AI 的 AstrBot 娱乐插件：自动偷取群聊表情包，分类入库，对话时按情绪自动发送。
 
-  基础指令（/meme 前缀）：
-  - /meme on / /meme off：开启 / 关闭表情包收集
-  - /meme auto_on / /meme auto_off：开启 / 关闭自动发送
+  基础指令（所有人可用，以下以默认 / 前缀举例）：
   - /meme status：查看运行状态与表情包统计
-  - /meme list [分类] [每页数量] [页码]：列出已收集的表情包
+  - /meme menu：查看功能面板；官方 QQ 支持按钮操作，按权限展示查看、设置和维护功能
+  - /meme random：让 bot 随机试发当前会话可用的表情
 
   管理指令（仅管理员）：
+  - /meme on / /meme off：开启 / 关闭表情包收集
+  - /meme auto_on / /meme auto_off：开启 / 关闭自动发送
+  - /meme list [分类] [每页数量] [页码]：查看 bot 已收录的表情包
   - /meme 偷：进入 30 秒强制收录模式
   - /meme clean [raw]：清理未分类的暂存图文件
   - /meme delete <序号|文件名>：删除表情包
@@ -34,11 +36,12 @@ help: |
 
   对话中 LLM 可自动调用 search_meme / send_meme / steal_meme 工具搜索、发送和收录表情包。
   WebUI：在插件详情页点击「表情管理」进入管理面板；「外部源」可导入 Meme Pack、GitHub 资源包仓库或同步 HTTPS JSON 目录，也能在导入整套角色表情时批量分配角色。
-version: 3.1.9
+version: 3.1.10
 support_platforms:
   - aiocqhttp
   - telegram
   - qq_official
+  - qq_official_webhook
 astrbot_version: ">=4.24.1"
 pages:
   - name: dashboard

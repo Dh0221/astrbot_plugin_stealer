@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.10] - 2026-10-26
+
+### added
+- 新增 `/meme menu`（别名 `/meme help`）功能面板，首页提供运行状态和随机表情，管理员可进入运行设置与维护工具。
+- 官方 QQ（含 Webhook）使用后台回调按钮，点击直接执行，不经过聊天 LLM 或唤醒词；其他适配器和按钮不可用时显示当前会话前缀对应的文字指令。
+- 随机试发遵守会话发送过滤与图片作用域限制，同一面板内避免重复，面板按钮 5 分钟后失效。
+
+### changed
+- 面板正文精简为标题、当前状态与有效期，功能由按钮名称表达；`/meme list` 仅限管理员查看 bot 收录内容。
+- QQ 操作人校验优先使用原始 OpenID，保留本人、会话及机器人实例限制，并提供摘要形式的拒绝原因日志。
+
+### fixed
+- 修复插件卸载、面板收起或到期发生在点击应答期间时，仍继续创建回调任务的问题；应答取消后及时释放操作状态。
+
+### English summary
+- Added a compact management panel and scope-aware random test sends. Members can view status and request random memes; settings, maintenance and collected-image inspection require administrator access.
+- Official QQ and Webhook buttons execute through authenticated callbacks. Text fallbacks follow each session's wake prefix, while QQ actor checks prefer raw OpenIDs and emit hashed diagnostics.
+- Prevented callback jobs from starting after unload, dismissal or expiry during acknowledgement, and cleared busy state when acknowledgement is cancelled.
+
 ## [3.1.9] - 2026-10-23
 
 ### added
