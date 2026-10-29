@@ -9,7 +9,8 @@
 
 插件接口走 AstrBot 面板，需要面板登录后的 token：
   python dafeiyu_reclassify.py preview --db .../cache/emoji.db --base http://127.0.0.1:6185/api/plug/astrbot_plugin_stealer --token XXX --out /tmp/reclass
-  python dafeiyu_reclassify.py apply   --base ... --token XXX --out /tmp/reclass [--skip 3,17]
+  python dafeiyu_reclassify.py apply   --base ... --token XXX --out /tmp/reclass [--skip 3,17] [--keep-moves angry>troll,happy>troll]
+--keep-moves 列出的分类变动不改分类（保留原分类和情绪），描述等照样更新。
 """
 
 from __future__ import annotations
@@ -179,16 +180,22 @@ def _write_html(out: Path) -> None:
 def apply(args) -> None:
     out = Path(args.out)
     skip = {int(x) for x in args.skip.split(",") if x.strip()} if args.skip else set()
+    keep_moves = {tuple(m.split(">", 1)) for m in args.keep_moves.split(",") if ">" in m}
+    kept = 0
     records = [json.loads(line) for line in (out / "reclassify.jsonl").read_text(encoding="utf-8").splitlines()]
     ok = fail = 0
     for r in sorted(records, key=lambda r: r["no"]):
         if not _applicable(r) or r["no"] in skip:
             continue
         new = r["new"]
+        category, emotions = new["category"], new["emotions"]
+        if (r["old"]["category"], category) in keep_moves:
+            category, emotions = r["old"]["category"], r["old"]["emotions"]
+            kept += 1
         payload = {
             "hash": r["hash"],
-            "category": new["category"],
-            "emotions": new["emotions"],
+            "category": category,
+            "emotions": emotions,
             "desc": new["desc"],
             "overlay_text": new["overlay_text"],
             "tags": new["tags"],
@@ -203,7 +210,7 @@ def apply(args) -> None:
         else:
             fail += 1
             print(f"#{r['no']} 写回失败: {result.get('error')}", flush=True)
-    print(f"写回完成：成功 {ok}，失败 {fail}，跳过 {len(skip)}")
+    print(f"写回完成：成功 {ok}，失败 {fail}，跳过 {len(skip)}，保留原分类 {kept}")
 
 
 def main() -> int:
@@ -214,6 +221,7 @@ def main() -> int:
     p.add_argument("--interval", type=float, default=1.0)
     a = sub.add_parser("apply")
     a.add_argument("--skip", default="")
+    a.add_argument("--keep-moves", default="")
     for sp in (p, a):
         sp.add_argument("--base", required=True)
         sp.add_argument("--token", required=True)
