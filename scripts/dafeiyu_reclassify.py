@@ -224,7 +224,7 @@ def apply(args) -> None:
             "desc": new["desc"],
             "overlay_text": new["overlay_text"],
             "tags": new["tags"],
-            "scenes": new["scenes"],
+            "scenes": r["old"].get("scenes") or [] if args.keep_scenes else new["scenes"],
         }
         try:
             result = _post(args.base, args.token, "images/update", payload)
@@ -249,6 +249,7 @@ def main() -> int:
     a.add_argument("--keep-moves", default="")
     a.add_argument("--keep-nos", default="")
     a.add_argument("--overrides", default="")
+    a.add_argument("--keep-scenes", action="store_true", help="适合回应的句子全部保留旧的")
     for sp in (p, a):
         sp.add_argument("--base", required=True)
         sp.add_argument("--token", required=True)
