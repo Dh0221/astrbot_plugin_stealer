@@ -47,6 +47,11 @@ class ImageProcessorService:
     # 分类结果常量
     CATEGORY_FILTERED = "过滤不通过"
     CATEGORY_NOT_EMOJI = "非表情包"
+    DEDUP_REASONS = {
+        "duplicate": "库里已经有这张了",
+        "blacklisted": "这张图被拉黑过",
+        "similar": "和库里某张长得很像，按重复处理",
+    }
 
     # 缓存常量
     IMAGE_CACHE_MAX_SIZE = 500  # 最大缓存条目数
@@ -378,6 +383,8 @@ class ImageProcessorService:
         source_url: str = "",
         original_name: str = "",
         add_method: str = "auto",
+        reject_info: dict[str, Any] | None = None,
+        relaxed_dedup: bool = False,
     ) -> tuple[bool, dict[str, Any] | None]:
         """统一处理图片：存储、分类、过滤。
 
@@ -390,6 +397,8 @@ class ImageProcessorService:
             content_filtration: 是否进行内容过滤
             is_platform_emoji: 是否为平台标记的表情包
             to_pending: 是否将原图及本地元数据保存到待审核池，等待人工通过后后台识图。
+            reject_info: 可选，未入库时写入 {"code", "reason"}，供调用方告诉用户具体原因。
+            relaxed_dedup: 跳过感知哈希的“长得像”去重，只按字节完全相同去重（用户主动收录时使用）。
 
         Returns:
             tuple: (是否成功, 图片索引)
@@ -398,9 +407,15 @@ class ImageProcessorService:
         if idx is None:
             idx = {}
 
+        def _reject(code: str, reason: str) -> None:
+            if reject_info is not None:
+                reject_info["code"] = code
+                reject_info["reason"] = reason
+            logger.info(f"[入库] 未收录（{reason}）: {Path(file_path).name}")
+
         base_path = Path(file_path)
         if not base_path.exists():
-            logger.warning(f"图片文件不存在: {file_path}")
+            _reject("missing", "图片文件不存在")
             return False, None
 
         raw_path: str | None = None  # 在异常处理中用于清理孤儿 raw 文件
@@ -412,19 +427,24 @@ class ImageProcessorService:
         )
 
         if not hash_val:
-            logger.warning(f"无法计算图片哈希: {file_path}")
+            _reject("hash_failed", "无法读取图片")
             return False, None
 
         # 2. 去重检查 + 标记处理中（锁内）
         async with self._process_lock:
             # 检查是否已在处理中（防止并发重复）
             if hash_val in self._processing_hashes:
-                logger.debug(f"图片正在处理中，跳过: {hash_val[:16]}")
+                if is_temp and os.path.exists(file_path):
+                    await safe_remove_file(file_path)
+                _reject("processing", "同一张图正在收录中")
                 return False, None
             # 检查去重
-            if await self._is_duplicate_or_blacklisted(
-                hash_val, idx, file_path, is_temp, phash_val
-            ):
+            dup_code = await self._is_duplicate_or_blacklisted(
+                hash_val, idx, file_path, is_temp, phash_val,
+                check_similar=not relaxed_dedup,
+            )
+            if dup_code:
+                _reject(dup_code, self.DEDUP_REASONS.get(dup_code, "重复"))
                 return False, None
             # 标记为处理中
             self._processing_hashes.add(hash_val)
@@ -434,6 +454,7 @@ class ImageProcessorService:
                 # Manual review needs only the original image and local metadata.
                 metadata = await asyncio.to_thread(self._probe_image_metadata, file_path)
                 if not metadata.get('format'):
+                    _reject("bad_format", "无法识别的图片格式")
                     return False, None
                 async with self._process_lock:
                     return await self._store_to_pending(
@@ -466,6 +487,7 @@ class ImageProcessorService:
                         add_method=add_method,
                         overlay_text=cached.get("overlay_text", ""),
                         emotions=cached.get("emotions", []),
+                        reject_info=reject_info,
                     )
 
             # 4. 存入 raw 目录（锁外）
@@ -480,6 +502,14 @@ class ImageProcessorService:
                     content_filtration=content_filtration,
                 )
             )
+
+            # 识图失败（模型报错或返回内容解析不了）时不再用兜底分类入库，
+            # 否则会留下没有描述、分类随便的记录。
+            if not category and not emotion:
+                if os.path.exists(raw_path):
+                    await safe_remove_file(raw_path)
+                _reject("vlm_failed", "识图模型没有返回有效结果")
+                return False, None
 
             # 6. 缓存结果（锁外）
             self._put_image_cache(
@@ -516,10 +546,14 @@ class ImageProcessorService:
                     add_method=add_method,
                     overlay_text=overlay_text,
                     emotions=emotions,
+                    reject_info=reject_info,
                 )
 
         except Exception as e:
             logger.error(f"处理图片失败 [{file_path}]: {e}")
+            if reject_info is not None:
+                reject_info["code"] = "error"
+                reject_info["reason"] = f"处理出错：{e}"
             # 清理临时文件
             if is_temp:
                 if os.path.exists(file_path):
@@ -538,8 +572,10 @@ class ImageProcessorService:
         file_path: str,
         is_temp: bool,
         phash_val: str = "",
-    ) -> bool:
-        """检查图片是否已存在于索引或黑名单中。
+        *,
+        check_similar: bool = True,
+    ) -> str:
+        """检查图片是否已存在于索引或黑名单中，返回原因代码，不重复时返回空串。
 
         双重去重策略：
         1. SHA256 精确匹配 - 字节完全相同的文件
@@ -552,10 +588,15 @@ class ImageProcessorService:
 
         db = getattr(self.plugin, "db_service", None)
         if db is not None:
-            if db.hash_exists(hash_val) or hash_val in db.blacklisted_hashes():
+            if db.hash_exists(hash_val):
                 await _cleanup_temp()
-                return True
-            image_phash = phash_val or await self._phash_service.compute_phash(file_path)
+                return "duplicate"
+            if hash_val in db.blacklisted_hashes():
+                await _cleanup_temp()
+                return "blacklisted"
+            image_phash = ""
+            if check_similar:
+                image_phash = phash_val or await self._phash_service.compute_phash(file_path)
             if image_phash:
                 for existing_path, existing_phash in db.get_phash_map().items():
                     distance = self._phash_service.hamming_distance(image_phash, existing_phash)
@@ -565,14 +606,16 @@ class ImageProcessorService:
                             continue
                         if not await self._phash_service.compute_phash(existing_path):
                             continue
-                        logger.debug(f"[去重] 感知哈希命中: 距离={distance}")
+                        logger.info(
+                            f"[去重] 感知哈希命中: 距离={distance}, 相似图={os.path.basename(existing_path)}"
+                        )
                         await _cleanup_temp()
-                        return True
+                        return "similar"
         elif any(isinstance(meta, dict) and meta.get("hash") == hash_val for meta in idx.values()):
             await _cleanup_temp()
-            return True
+            return "duplicate"
 
-        return False
+        return ""
 
     def _get_valid_cache(self, hash_val: str, model_sig: str = "") -> dict | None:
         """获取有效（未过期且模型签名一致）的分类缓存，过期或换模型则清除。"""
@@ -649,13 +692,17 @@ class ImageProcessorService:
         add_method: str = "auto",
         overlay_text: str = "",
         emotions: list | None = None,
+        reject_info: dict[str, Any] | None = None,
     ) -> tuple[bool, dict[str, Any] | None]:
         """根据分类结果决定存储、跳过或清理。"""
         source = "缓存" if from_cache else "VLM"
 
         # 过滤不通过
         if category == self.CATEGORY_FILTERED or emotion == self.CATEGORY_FILTERED:
-            logger.debug(f"图片过滤不通过（{source}）: {hash_val}")
+            logger.info(f"[入库] 未收录（内容审核不通过，{source}）: {hash_val[:16]}")
+            if reject_info is not None:
+                reject_info["code"] = "filtered"
+                reject_info["reason"] = "内容审核不通过"
             if is_temp and os.path.exists(file_path):
                 await safe_remove_file(file_path)
             elif not from_cache and os.path.exists(file_path):
@@ -664,7 +711,10 @@ class ImageProcessorService:
 
         # 非表情包
         if category == self.CATEGORY_NOT_EMOJI or emotion == self.CATEGORY_NOT_EMOJI:
-            logger.debug(f"非表情包（{source}）: {hash_val}")
+            logger.info(f"[入库] 未收录（识图判定不是表情包，{source}）: {hash_val[:16]}")
+            if reject_info is not None:
+                reject_info["code"] = "not_emoji"
+                reject_info["reason"] = "识图模型判断这不是表情包"
             if is_temp and os.path.exists(file_path):
                 await safe_remove_file(file_path)
             elif not from_cache and os.path.exists(file_path):

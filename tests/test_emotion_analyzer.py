@@ -55,7 +55,8 @@ class TestTemplateLoading:
         text = _EMOTION_ANALYSIS_DEFAULT_TEMPLATE
         assert "以助手回复的立场和语气为准" in text
         assert "保留原句中的否定含义" in text
-        assert "从给定分类中按相关度选 0~3 项" in text
+        assert "从给定分类中按相关度选 1~3 项" in text
+        assert '{"send":false}' in text
 
     def test_default_template_renders_without_key_error(self):
         analyzer = _build_analyzer()
@@ -65,7 +66,7 @@ class TestTemplateLoading:
             llm_reply="又被安排加班了",
             user_message="今天好累",
         )
-        assert '{"query":"安慰加班 辛苦了早点休息"' in prompt
+        assert '"query":"安慰加班 辛苦了早点休息"' in prompt
         assert "{emotion_list}" not in prompt
         assert "{llm_reply}" not in prompt
         assert "{user_message}" not in prompt
@@ -82,7 +83,7 @@ class TestTemplateLoading:
             llm_reply="又被安排加班了",
             user_message="今天好累",
         )
-        assert '{"query":"安慰加班 辛苦了早点休息"' in prompt
+        assert '"query":"安慰加班 辛苦了早点休息"' in prompt
         assert "又被安排加班了" in prompt
 
     def test_custom_template_is_loaded_and_stripped(self):
@@ -238,15 +239,22 @@ class TestAnalyzeEmotion(unittest.IsolatedAsyncioTestCase):
         mocked.assert_not_called()
         self.assertEqual(analyzer.stats["cache_hits"], 1)
 
-    async def test_fast_path_local_match_skips_llm(self):
+    async def test_llm_decides_even_when_local_keywords_match(self):
         analyzer = _build_analyzer()
         with patch.object(
             analyzer, "_analyze_with_llm", new=AsyncMock(return_value="troll")
         ) as mocked:
             result = await analyzer.analyze_emotion(_dummy_event(), "哈哈笑死我了")
         self.assertIsInstance(result, EmotionQuery)
+        self.assertEqual(result.primary, "troll")
+        mocked.assert_awaited_once()
+
+    async def test_local_keywords_only_used_when_llm_fails(self):
+        analyzer = _build_analyzer()
+        with patch.object(analyzer, "_analyze_with_llm", new=AsyncMock(return_value=None)):
+            result = await analyzer.analyze_emotion(_dummy_event(), "哈哈笑死我了")
+        self.assertIsInstance(result, EmotionQuery)
         self.assertEqual(result.primary, "happy")
-        mocked.assert_not_called()
 
     async def test_llm_failure_falls_through_without_abstain(self):
         analyzer = _build_analyzer()
@@ -266,7 +274,7 @@ class TestAnalyzeEmotion(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsInstance(result, EmotionQuery)
         call = analyzer.plugin.context.llm_generate.await_args
-        self.assertIn('{"query":"安慰加班 辛苦了早点休息"', call.kwargs["prompt"])
+        self.assertIn('"query":"安慰加班 辛苦了早点休息"', call.kwargs["prompt"])
 
 
 class TestReplyAnalysis(unittest.IsolatedAsyncioTestCase):

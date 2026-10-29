@@ -3,6 +3,7 @@
 import asyncio
 import os
 import random
+import time
 import re
 from typing import Any
 
@@ -229,6 +230,45 @@ class MemeSmartSelectService:
             logger.error(f"智能选择失败: {e}")
             return None
 
+    async def rank_for_pick(
+        self,
+        category: str,
+        context_text: str,
+        candidate_categories: list[str] | None = None,
+        event: AstrMessageEvent | None = None,
+        *,
+        emotion_weights: dict[str, float] | None = None,
+        exclude_paths: set[str] | None = None,
+        exclude_used_within: float = 0.0,
+        limit: int = 6,
+    ) -> list[dict[str, Any]]:
+        """自动配图用：返回排好序的前几个候选及其文字信息，交给模型挑选。"""
+        idx = await asyncio.to_thread(self._search_engine.get_index)
+        if not idx:
+            return []
+        ranked = await self._rank_emoji_candidates(
+            category, context_text, candidate_categories, event,
+            idx=idx,
+            require_files=True,
+            emotion_weights=emotion_weights,
+            exclude_paths=exclude_paths,
+            exclude_used_within=exclude_used_within,
+        )
+        results: list[dict[str, Any]] = []
+        for item in ranked[: max(1, limit)]:
+            path = item[0]
+            data = idx.get(path) or idx.get(canonicalize_path(path)) or {}
+            results.append(
+                {
+                    "path": path,
+                    "score": item[1],
+                    "category": item[5],
+                    "desc": str(data.get("desc", "") or ""),
+                    "overlay_text": str(data.get("overlay_text", "") or ""),
+                }
+            )
+        return results
+
     async def _rank_emoji_candidates(
         self,
         category: str,
@@ -241,8 +281,13 @@ class MemeSmartSelectService:
         require_files: bool | None = None,
         penalize_recent: bool = True,
         emotion_weights: dict[str, float] | None = None,
+        exclude_paths: set[str] | None = None,
+        exclude_used_within: float = 0.0,
     ) -> list[tuple]:
-        """召回并评分；JEV 模式过滤文件并禁用随机加分和提前停止。"""
+        """召回并评分；JEV 模式过滤文件并禁用随机加分和提前停止。
+
+        exclude_paths / exclude_used_within：自动配图时直接排除近期发过的图。
+        """
         try:
             if idx is None:
                 idx = await asyncio.to_thread(self._search_engine.get_index)
@@ -265,10 +310,20 @@ class MemeSmartSelectService:
             if not recalled_paths:
                 return []
 
+            now = time.time()
             for file_path in recalled_paths:
                 data = idx.get(file_path) or idx.get(canonicalize_path(file_path))
                 if not isinstance(data, dict):
                     continue
+                if exclude_paths and canonicalize_path(file_path) in exclude_paths:
+                    continue
+                if exclude_used_within > 0:
+                    try:
+                        last_used = float(data.get("last_used_at") or 0)
+                    except (TypeError, ValueError):
+                        last_used = 0.0
+                    if last_used and now - last_used < exclude_used_within:
+                        continue
                 item_category = entry_category(data)
                 tags = parse_tags(data.get("tags", []))
                 scenes = parse_tags(data.get("scenes", []))

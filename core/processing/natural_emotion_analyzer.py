@@ -22,20 +22,44 @@ from ..search.text_similarity import calculate_hybrid_similarity, _has_negation_
 _EMOTION_ABSTAIN = object()
 
 _LEGACY_EMOTION_TEMPLATE_HASH = '1914107e8c9b676649a0e92af223db633a7d56e0468dac44148df009e14d4201'
-_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """根据本轮对话，提炼助手用于表达情绪、接梗或回应的表情包检索词。表情由助手发给当前用户。
+_EMOTION_ANALYSIS_DEFAULT_TEMPLATE = """根据本轮对话，先判断助手这句回复后面适不适合跟一张表情包，适合的话再提炼检索词。表情由助手发给当前用户。
 可选情绪分类：{emotion_list}
 
-任务：
-1. 综合用户消息与助手回复理解这轮交流：共鸣、接梗、调侃、自嘲、安慰、感谢、关心、催促或抗议。
-2. 以助手回复的立场和语气为准，结合用户消息判断语境，区分安慰与嘲笑、关心式催促与敌意反击。
-3. query 用一条简短中文检索句表达助手想怎样回应，包含具体台词、语气或场景，并保留原句中的否定含义。画面和角色以对话中明确提到的内容为准。
-4. emotions 从给定分类中按相关度选 0~3 项，作为检索的辅助线索。
+第一步，判断要不要发。像真人群友一样克制：多数回复不需要表情包。下面这些情况一律不发，输出 {"send":false}：
+- 用户消息为空，或者是系统、定时任务、“主动分享/冲浪/关心”之类的指令，而不是群友在聊天；
+- 助手在认真回答问题、科普、讲道理、给建议、讲正事；
+- 助手在道歉、认错、拒绝、解释误会；
+- 对方在难过、倾诉、生病或遇到真麻烦，而助手在安慰；
+- 回复很平淡，没有明显的情绪、梗或语气可以接；
+- 想不出一张贴合这句话的表情包。
+只有在闲聊、接梗、调侃、吐槽、起哄、撒娇、开心、惊讶、无语这类情绪明显的时候才发。
+
+第二步，适合发时：
+1. 以助手回复的立场和语气为准，结合用户消息判断语境，区分安慰与嘲笑、关心式催促与敌意反击。
+2. query 用一条简短中文检索句表达助手想怎样回应，包含具体台词、语气或场景，并保留原句中的否定含义。画面和角色以对话中明确提到的内容为准。
+3. emotions 从给定分类中按相关度选 1~3 项。只有助手明确在搞怪、发癫、阴阳怪气时才选 troll。
 
 用户消息：{user_message}
 助手回复：{llm_reply}
 
-只输出合法 JSON，例如：
-{"query":"安慰加班 辛苦了早点休息","emotions":["tired","sigh"]}
+只输出合法 JSON，不发时输出 {"send":false}；发时例如：
+{"send":true,"query":"安慰加班 辛苦了早点休息","emotions":["tired","sigh"]}
+"""
+
+_MEME_PICK_TEMPLATE = """你在帮一个 QQ 群聊机器人挑表情包。它刚回复了一句话，准备在后面跟一张表情包。下面是候选图，请挑出最贴合的一张；都不合适就选 0，宁可不发也不要乱发。
+
+判断标准：
+- 图上的文字和图的情绪要和助手这句回复的语气一致，不能相反（比如助手在道晚安，图上却写“起来嗨”）；
+- 图上的文字不能和当前话题对不上、让人看不懂；
+- 图要像是助手接着自己那句话发的，而不是在回应别的事。
+
+用户消息：{user_message}
+助手回复：{llm_reply}
+
+候选：
+{candidates}
+
+只输出合法 JSON，例如 {"pick":2} 或 {"pick":0}。
 """
 
 
@@ -161,14 +185,8 @@ class NaturalEmotionAnalyzer:
                 if cached:
                     return cached
 
-        # 本地预匹配：先用分词匹配关键词映射（快速路径）
-        local_match = self._local_keyword_match(cleaned_reply)
-        if local_match:
-            query = EmotionQuery(True, cleaned_reply, [local_match])
-            logger.debug(f"[情绪分析] 本地匹配: {cleaned_reply[:30]}... → {local_match}")
-            async with self._cache_lock:
-                self._cache_result(cache_key, query.to_cache())
-            return query
+        # 不再走本地关键词快速路径：要不要发需要模型结合语境判断，
+        # 本地匹配只在模型调用失败时兜底。
 
         # 执行 LLM 分析（传入用户消息作为上下文）
         start_time = time.time()
@@ -400,6 +418,10 @@ class NaturalEmotionAnalyzer:
 
         data = self._extract_json_object(stripped)
         if isinstance(data, dict):
+            send_flag = data.get("send", data.get("should_send"))
+            if send_flag is False or str(send_flag).strip().lower() in {"false", "0", "no"}:
+                logger.info("[情绪分析] 模型判断这句不适合配表情包，跳过发送")
+                return _EMOTION_ABSTAIN
             # 提取检索句和情绪先验；发送时机由调用方控制。
             query = str(data.get("query") or data.get("search_query") or "").strip()
             raw_emotions = data.get("emotions") or data.get("emotion") or []
@@ -552,6 +574,60 @@ class NaturalEmotionAnalyzer:
         async with self._cache_lock:
             self.analysis_cache.clear()
         logger.info("[情绪分析] 缓存已清空")
+
+    async def pick_candidate(
+        self,
+        event: AstrMessageEvent,
+        llm_reply: str,
+        candidates: list[dict[str, Any]],
+        *,
+        user_message: str = "",
+    ) -> int | None:
+        """让模型从候选中挑一张最贴合的；返回候选下标，都不合适返回 None。
+
+        模型调用失败时返回 -1，调用方按原有排序结果处理。
+        """
+        if not candidates:
+            return None
+        lines = []
+        for number, item in enumerate(candidates, start=1):
+            overlay = str(item.get("overlay_text") or "").strip() or "无"
+            desc = str(item.get("desc") or "").strip() or "无"
+            category = str(item.get("category") or "").strip()
+            lines.append(f"{number}. 分类={category}；图上文字：{overlay}；画面：{desc}")
+        prompt = (
+            _MEME_PICK_TEMPLATE.replace("{user_message}", self._clean_text(user_message) or "（无）")
+            .replace("{llm_reply}", self._clean_text(llm_reply))
+            .replace("{candidates}", "\n".join(lines))
+        )
+        try:
+            provider_id = await self._get_text_provider(event)
+            if not provider_id:
+                return -1
+            response = await self.plugin.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                max_tokens=60,
+            )
+            text = str(getattr(response, "completion_text", "") or "")
+        except Exception as e:
+            logger.warning(f"[挑图] 模型调用失败，按排序结果发送: {e}")
+            return -1
+        data = self._extract_json_object(text) or {}
+        raw = data.get("pick", data.get("index"))
+        if raw is None:
+            match = re.search(r"\d+", text)
+            raw = match.group(0) if match else None
+        try:
+            number = int(raw)
+        except (TypeError, ValueError):
+            logger.warning(f"[挑图] 无法解析模型输出，按排序结果发送: {text[:60]}")
+            return -1
+        if number <= 0 or number > len(candidates):
+            logger.info("[挑图] 模型认为候选都不合适，这次不发")
+            return None
+        logger.info(f"[挑图] 选中第 {number} 张: {candidates[number - 1].get('path', '')}")
+        return number - 1
 
     async def analyze_for_reply(
         self, event: AstrMessageEvent, llm_reply: str, *, user_message: str = ""

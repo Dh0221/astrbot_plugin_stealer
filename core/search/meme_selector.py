@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -354,6 +355,91 @@ class MemeSelector:
         except Exception as e:
             logger.error(f"发送表情包失败: {e}", exc_info=True)
             return False
+
+    AUTO_RECENT_SESSION_SECONDS = 6 * 3600  # 同一会话 6 小时内发过的图不再自动发
+    AUTO_RECENT_GLOBAL_SECONDS = 2 * 3600  # 任何会话 2 小时内发过的图不再自动发
+    AUTO_PICK_CANDIDATES = 6
+
+    def _session_recent_paths(self, event: AstrMessageEvent | None) -> set[str]:
+        key = str(getattr(event, "unified_msg_origin", "") or "")
+        history = getattr(self, "_auto_recent_by_session", {}).get(key, [])
+        now = time.time()
+        return {
+            path for path, sent_at in history if now - sent_at < self.AUTO_RECENT_SESSION_SECONDS
+        }
+
+    def _remember_session_send(self, event: AstrMessageEvent | None, path: str) -> None:
+        if not hasattr(self, "_auto_recent_by_session"):
+            self._auto_recent_by_session: dict[str, list[tuple[str, float]]] = {}
+        key = str(getattr(event, "unified_msg_origin", "") or "")
+        now = time.time()
+        history = [
+            (p, t) for p, t in self._auto_recent_by_session.get(key, [])
+            if now - t < self.AUTO_RECENT_SESSION_SECONDS
+        ]
+        history.append((canonicalize_path(path), now))
+        self._auto_recent_by_session[key] = history[-50:]
+
+    async def try_send_emoji_picked(
+        self,
+        event: AstrMessageEvent,
+        emotions: list[str],
+        search_text: str,
+        *,
+        reply_text: str,
+        user_message: str = "",
+        emotion_weights: dict[str, float] | None = None,
+        deadline: float | None = None,
+    ) -> bool:
+        """自动配图：召回前几个候选，排除近期发过的，再让模型挑一张或放弃。"""
+        event = unwrap_event(event)
+        if not self._check_group_allowed(event):
+            return False
+        if self.plugin._emoji_sender_engine.emoji_turn_state(event).is_active_sent():
+            return False
+
+        priors = [item for item in (emotions or []) if item]
+        candidate_categories: list[str] = []
+        for item in priors:
+            mapped = self.normalize_category(item) or str(item).lower().strip()
+            if mapped and mapped not in candidate_categories:
+                candidate_categories.append(mapped)
+        primary = candidate_categories[0] if candidate_categories else ""
+
+        candidates = await self._smart_select_service.rank_for_pick(
+            primary,
+            search_text,
+            candidate_categories=candidate_categories or None,
+            event=event,
+            emotion_weights=emotion_weights,
+            exclude_paths=self._session_recent_paths(event),
+            exclude_used_within=self.AUTO_RECENT_GLOBAL_SECONDS,
+            limit=self.AUTO_PICK_CANDIDATES,
+        )
+        if not candidates:
+            logger.info("[自动配图] 没有足够相关、且近期没发过的图，这次不发")
+            return False
+
+        choice = 0
+        analyzer = getattr(self.plugin, "emotion_analyzer", None)
+        if analyzer is not None and hasattr(analyzer, "pick_candidate"):
+            picked = await analyzer.pick_candidate(
+                event, reply_text, candidates, user_message=user_message
+            )
+            if picked is None:
+                return False
+            if picked >= 0:
+                choice = picked
+
+        if deadline is not None and asyncio.get_event_loop().time() > deadline:
+            logger.info("[自动配图] 选图太慢，图会显得迟到，这次放弃")
+            return False
+
+        path = candidates[choice]["path"]
+        sent = await self.send_emoji_with_text(event, path, search_text)
+        if sent:
+            self._remember_session_send(event, path)
+        return sent
 
     async def try_send_emoji(
         self,

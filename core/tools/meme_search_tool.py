@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
@@ -9,7 +10,39 @@ from astrbot.api.event import AstrMessageEvent
 from ..events.event_context import unwrap_event
 from ..util.normalization import normalize_label_list
 
+_RECENT_CAPTURE_PATTERN = re.compile(
+    r"(刚才?|最新|最近|新)(偷|收|存|入库|收录|加)(的|了|进来)|刚(偷|收|存)到"
+)
+
+
 class MemeSearchToolWorkflow:
+    def _recent_capture_candidates(self, event, idx: dict, limit: int) -> list[tuple]:
+        """“刚偷的那张”这类请求按入库时间取最新的，而不是按描述检索。"""
+        selector = getattr(self, "meme_selector", None)
+        rows = []
+        for path, data in (idx or {}).items():
+            if not isinstance(data, dict):
+                continue
+            if selector is not None and not selector.is_path_allowed_for_event(path, event):
+                continue
+            try:
+                created = float(data.get("created_at") or 0)
+            except (TypeError, ValueError):
+                created = 0.0
+            rows.append((created, path, data))
+        rows.sort(key=lambda item: item[0], reverse=True)
+        results = []
+        for _created, path, data in rows[:limit]:
+            results.append(
+                (
+                    path,
+                    str(data.get("desc", "") or ""),
+                    str(data.get("category", "") or ""),
+                    ", ".join(normalize_label_list(data.get("tags", []))),
+                )
+            )
+        return results
+
     async def _search_meme_candidates(
         self,
         event: AstrMessageEvent,
@@ -32,6 +65,9 @@ class MemeSearchToolWorkflow:
             names = self.meme_selector._smart_select_service._character_names
             idx = {path: data for path, data in idx.items()
                    if character.strip().casefold() in names(data)}
+        if _RECENT_CAPTURE_PATTERN.search(query or ""):
+            logger.info("[Tool] 按入库时间返回最近收录的表情包")
+            return self._recent_capture_candidates(event, idx, limit)
         context = " ".join(part for part in (query, reply, character) if part).strip()
         return await self.meme_selector.smart_search(context, limit=limit, idx=idx, event=event)
 

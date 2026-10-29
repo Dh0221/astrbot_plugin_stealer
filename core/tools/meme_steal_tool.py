@@ -104,17 +104,23 @@ class MemeStealToolWorkflow:
             extra_meta = self._build_steal_tool_extra_meta(
                 event, image_ref, source=source
             )
+            # 主动收录是用户明确要的图：只按字节完全相同去重，不做“长得像”去重。
+            reject_info: dict[str, Any] = {}
             success, merged_idx = await self._process_image(
-                event, temp_path, is_temp=is_temp, extra_meta=extra_meta
+                event, temp_path, is_temp=is_temp, extra_meta=extra_meta,
+                reject_info=reject_info, relaxed_dedup=True,
             )
 
             if not success:
-                fail_open_hint = (
-                    "。已启用审核失败开放策略，但明确审核不通过或重复图片不会入库"
-                    if getattr(self, "content_filtration_fail_open", False)
-                    else ""
-                )
-                yield f"偷取失败：VLM 分析未通过（可能已存在、内容不合适或无法识别为表情包）{fail_open_hint}"
+                code = reject_info.get("code", "")
+                reason = reject_info.get("reason") or "原因未知"
+                if code == "duplicate":
+                    yield "这张已经在表情包库里了，不用再收。"
+                    return
+                if code == "processing":
+                    yield "这张正在自动收录中，稍等一会儿就会入库，不用再收。"
+                    return
+                yield f"偷取失败：{reason}"
                 return
 
             if merged_idx:
@@ -295,6 +301,8 @@ class MemeStealToolWorkflow:
         is_platform_emoji: bool = False,
         extra_meta: dict[str, Any] | None = None,
         to_pending: bool = False,
+        reject_info: dict[str, Any] | None = None,
+        relaxed_dedup: bool = False,
     ) -> tuple[bool, dict[str, Any] | None]:
         """统一处理图片的方法，包括过滤、分类、存储和索引更新。"""
         try:
@@ -309,12 +317,17 @@ class MemeStealToolWorkflow:
                     is_platform_emoji=is_platform_emoji,
                     extra_meta=extra_meta,
                     to_pending=to_pending,
+                    reject_info=reject_info,
+                    relaxed_dedup=relaxed_dedup,
                 ),
                 timeout=self.IMAGE_PROCESSING_TIMEOUT_SECONDS,
             )
             return success, updated_idx
         except asyncio.TimeoutError:
             logger.warning(f"图片处理超时: {file_path}")
+            if reject_info is not None:
+                reject_info["code"] = "timeout"
+                reject_info["reason"] = "识图超时"
             if is_temp:
                 await safe_remove_file(file_path)
             return False, idx if idx is not None else {}

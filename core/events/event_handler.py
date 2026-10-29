@@ -450,6 +450,27 @@ class EventHandler:
             return [], {}
         return image_segments, file_map
 
+    @staticmethod
+    def _looks_like_gif(image: Image, index: int, image_segments: list[dict]) -> bool:
+        """普通图片方式发来的 GIF 也当作候选，交给识图模型判断是不是表情包。
+
+        QQ 里从网上存的动图常以 sub_type=0 的普通图片发出，没有表情标记。
+        这里只看文件名后缀，避免为了判断格式先下载每张普通图片。
+        """
+        refs: list[str] = []
+        for attr in ("file", "url", "path"):
+            refs.append(str(getattr(image, attr, "") or ""))
+        segment = image_segments[index] if 0 <= index < len(image_segments) else None
+        data = segment.get("data", {}) if isinstance(segment, dict) else {}
+        if isinstance(data, dict):
+            refs.extend(str(data.get(key, "") or "") for key in ("file", "url", "summary"))
+        for ref in refs:
+            path = ref.lower().split("?", 1)[0]
+            if path.endswith(".gif"):
+                logger.debug(f"普通图片方式发来的 GIF，纳入表情包候选: {ref[:80]}")
+                return True
+        return False
+
     def _collect_image_candidates(
         self,
         event: AstrMessageEvent,
@@ -468,7 +489,7 @@ class EventHandler:
                     image_segments=image_segments,
                     image_file_map=file_map,
                 )
-                if not is_platform_emoji:
+                if not is_platform_emoji and not self._looks_like_gif(image, index, image_segments):
                     subtype = getattr(image, "subType", "unknown")
                     logger.debug(f"跳过非表情包图片 (subType={subtype})")
                     continue

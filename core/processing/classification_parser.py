@@ -22,6 +22,16 @@ class ClassificationParser:
     """负责解析 VLM 的分类响应。"""
 
     CATEGORY_FILTERED = "过滤不通过"
+    CATEGORY_NOT_EMOJI = "非表情包"
+    NOT_EMOJI_KEYS = frozenset({"not_emoji", "not_meme", "非表情包", "none"})
+
+    @classmethod
+    def _is_not_emoji_payload(cls, data: dict[str, Any]) -> bool:
+        """模型明确判定输入不是表情包（截图、照片、录屏等）。"""
+        if data.get("is_meme") is False or str(data.get("is_meme", "")).strip().lower() == "false":
+            return True
+        category = str(data.get("category", "") or "").strip().lower()
+        return category in cls.NOT_EMOJI_KEYS
 
     def __init__(self, plugin_instance=None) -> None:
         self.plugin = plugin_instance
@@ -95,6 +105,8 @@ class ClassificationParser:
         approved = data.get("approved")
         if approved is False or str(approved).strip().lower() in {"false", "0", "no", "rejected"}:
             return
+        if self._is_not_emoji_payload(data):
+            return
         for field in ("category", "description"):
             if not isinstance(data.get(field), str) or not data[field].strip():
                 raise ValueError(f"VLM 分类结果缺少有效 {field}")
@@ -130,6 +142,9 @@ class ClassificationParser:
         ):
             logger.warning(f"Image moderation rejected: {file_path}")
             return self.CATEGORY_FILTERED, [], "", self.CATEGORY_FILTERED, [], "", []
+
+        if self._is_not_emoji_payload(data):
+            return self.CATEGORY_NOT_EMOJI, [], "", self.CATEGORY_NOT_EMOJI, [], "", []
 
         category = data.get("category", "")
         tags = data.get("tags", [])

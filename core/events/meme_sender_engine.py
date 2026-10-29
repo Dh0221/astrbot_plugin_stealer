@@ -99,6 +99,7 @@ class MemeSenderEngine:
     """负责表情包自动发送决策和响应处理。"""
 
     AUTO_EMOJI_COOLDOWN_SECONDS = 20  # 同一会话自动发表情的最短间隔
+    AUTO_EMOJI_MAX_LATENCY_SECONDS = 35  # 从回复到发图超过这个时间就放弃，避免图迟到
 
     def __init__(self, plugin_instance: Any) -> None:
         self.plugin = plugin_instance
@@ -437,8 +438,20 @@ class MemeSenderEngine:
                 sent = await self.plugin.meme_selector.send_jev_selection(event, jev_path, text)
             else:
                 weights = punctuation_emotion_weights(text, final_emotions)
-                options = {"emotion_weights": weights} if weights else {}
-                sent = await self.try_send_emoji(event, final_emotions, search_text or text, **options)
+                selector = getattr(self.plugin, "meme_selector", None)
+                if selector is not None and hasattr(selector, "try_send_emoji_picked"):
+                    sent = await selector.try_send_emoji_picked(
+                        event,
+                        final_emotions,
+                        search_text or text,
+                        reply_text=text,
+                        user_message=user_message,
+                        emotion_weights=weights or None,
+                        deadline=task_start + self.AUTO_EMOJI_MAX_LATENCY_SECONDS,
+                    )
+                else:
+                    options = {"emotion_weights": weights} if weights else {}
+                    sent = await self.try_send_emoji(event, final_emotions, search_text or text, **options)
             if sent:
                 await self.mark_auto_emoji_sent(event)
                 self.emoji_turn_state(event).mark_active_sent()

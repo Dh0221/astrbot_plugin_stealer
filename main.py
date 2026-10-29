@@ -693,6 +693,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         表情可单独回应，也可配合文字；按语境和交流节奏使用。
         核对候选与回复立场，合适时调用 send_meme(emoji_id=编号)。编号仅本次搜索有效。
         候选不合适可补充台词重搜或用文字回复。通过 search_meme 选图，再用 send_meme 发送候选编号。
+        别人想看刚偷到的图时，query 写“刚偷的”，会按入库时间返回最新几张，第 1 张就是最新的。
 
         Args:
             query(string): 想表达的台词、语气或使用场景，支持自然句，例如“安慰刚加班的朋友”。

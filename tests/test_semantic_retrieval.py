@@ -5,6 +5,7 @@ import types
 from core.processing.classification_parser import ClassificationParser
 from core.processing.natural_emotion_analyzer import (
     EmotionQuery,
+    _EMOTION_ABSTAIN,
     NaturalEmotionAnalyzer,
 )
 from core.processing.semantic_schema import build_meme_search_text
@@ -172,10 +173,10 @@ def test_emotion_query_parses_json_and_legacy_word():
     skipped = analyzer._parse_emotion_query(
         '{"should_send": false}', fallback_query="原文"
     )
-    assert isinstance(skipped, EmotionQuery)
-    assert skipped.should_send is True
-    assert skipped.search_query == "原文"
-    assert skipped.emotion_priors == []
+    assert skipped is _EMOTION_ABSTAIN
+
+    skipped_new_key = analyzer._parse_emotion_query('{"send": false}', fallback_query="原文")
+    assert skipped_new_key is _EMOTION_ABSTAIN
 
     legacy = analyzer._parse_emotion_query("sigh", fallback_query="原文")
     assert isinstance(legacy, EmotionQuery)
