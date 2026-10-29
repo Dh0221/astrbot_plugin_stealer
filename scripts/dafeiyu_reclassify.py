@@ -11,6 +11,7 @@
   python dafeiyu_reclassify.py preview --db .../cache/emoji.db --base http://127.0.0.1:6185/api/plug/astrbot_plugin_stealer --token XXX --out /tmp/reclass
   python dafeiyu_reclassify.py apply   --base ... --token XXX --out /tmp/reclass [--skip 3,17] [--keep-moves angry>troll,happy>troll]
 --keep-moves 列出的分类变动不改分类（保留原分类和情绪），描述等照样更新。
+--keep-nos 同上，但按对照页 #编号指定，例如 --keep-nos 31,75。
 """
 
 from __future__ import annotations
@@ -181,6 +182,7 @@ def apply(args) -> None:
     out = Path(args.out)
     skip = {int(x) for x in args.skip.split(",") if x.strip()} if args.skip else set()
     keep_moves = {tuple(m.split(">", 1)) for m in args.keep_moves.split(",") if ">" in m}
+    keep_nos = {int(x) for x in args.keep_nos.split(",") if x.strip()}
     kept = 0
     records = [json.loads(line) for line in (out / "reclassify.jsonl").read_text(encoding="utf-8").splitlines()]
     ok = fail = 0
@@ -189,7 +191,7 @@ def apply(args) -> None:
             continue
         new = r["new"]
         category, emotions = new["category"], new["emotions"]
-        if (r["old"]["category"], category) in keep_moves:
+        if (r["old"]["category"], category) in keep_moves or r["no"] in keep_nos:
             category, emotions = r["old"]["category"], r["old"]["emotions"]
             kept += 1
         payload = {
@@ -222,6 +224,7 @@ def main() -> int:
     a = sub.add_parser("apply")
     a.add_argument("--skip", default="")
     a.add_argument("--keep-moves", default="")
+    a.add_argument("--keep-nos", default="")
     for sp in (p, a):
         sp.add_argument("--base", required=True)
         sp.add_argument("--token", required=True)
