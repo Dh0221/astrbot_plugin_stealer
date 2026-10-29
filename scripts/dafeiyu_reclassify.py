@@ -12,6 +12,8 @@
   python dafeiyu_reclassify.py apply   --base ... --token XXX --out /tmp/reclass [--skip 3,17] [--keep-moves angry>troll,happy>troll]
 --keep-moves 列出的分类变动不改分类（保留原分类和情绪），描述等照样更新。
 --keep-nos 同上，但按对照页 #编号指定，例如 --keep-nos 31,75。
+--overrides 人工审核结果 JSON：{"编号": {"category": "cry", "note": "委屈"}}。列出的编号不用新结果，
+            保留原来的描述等，category 缺省保留原分类，note 作为用法补进描述。
 """
 
 from __future__ import annotations
@@ -178,18 +180,39 @@ def _write_html(out: Path) -> None:
     print(f"对照页: {out / 'reclassify.html'}，分类改变 {len(changed)}，不是表情包 {len(not_emoji)}，失败 {len(failed)}")
 
 
+def _reviewed(old: dict, override: dict) -> dict:
+    category = override.get("category") or old["category"]
+    emotions = [category] + [e for e in (old.get("emotions") or []) if e != category]
+    desc = old.get("desc") or ""
+    if override.get("note"):
+        desc = f"{desc}（用法：{override['note']}）" if desc else f"用法：{override['note']}"
+    return {
+        "category": category,
+        "emotions": emotions[:3],
+        "desc": desc,
+        "overlay_text": old.get("overlay_text") or "",
+        "tags": old.get("tags") or [],
+        "scenes": old.get("scenes") or [],
+    }
+
+
 def apply(args) -> None:
     out = Path(args.out)
     skip = {int(x) for x in args.skip.split(",") if x.strip()} if args.skip else set()
     keep_moves = {tuple(m.split(">", 1)) for m in args.keep_moves.split(",") if ">" in m}
     keep_nos = {int(x) for x in args.keep_nos.split(",") if x.strip()}
     kept = 0
+    overrides = {}
+    if args.overrides:
+        overrides = {int(k): v for k, v in json.loads(Path(args.overrides).read_text(encoding="utf-8")).items()}
     records = [json.loads(line) for line in (out / "reclassify.jsonl").read_text(encoding="utf-8").splitlines()]
     ok = fail = 0
     for r in sorted(records, key=lambda r: r["no"]):
         if not _applicable(r) or r["no"] in skip:
             continue
         new = r["new"]
+        if r["no"] in overrides:
+            new = _reviewed(r["old"], overrides[r["no"]])
         category, emotions = new["category"], new["emotions"]
         if (r["old"]["category"], category) in keep_moves or r["no"] in keep_nos:
             category, emotions = r["old"]["category"], r["old"]["emotions"]
@@ -225,6 +248,7 @@ def main() -> int:
     a.add_argument("--skip", default="")
     a.add_argument("--keep-moves", default="")
     a.add_argument("--keep-nos", default="")
+    a.add_argument("--overrides", default="")
     for sp in (p, a):
         sp.add_argument("--base", required=True)
         sp.add_argument("--token", required=True)
