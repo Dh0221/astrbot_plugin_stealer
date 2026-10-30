@@ -709,6 +709,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
         """按本次 search_meme 返回的候选编号发送表情包。
 
         选择原则：核对图上文字和适用场景，保持与当前回复的立场一致；候选不合适时可以不发送。
+        发出后不要再用文字介绍、描述或解释这张图，表情包本身就是回应。
 
         Args:
             emoji_id(number): 表情包编号（从 search_meme 返回的候选列表中选择）
@@ -727,7 +728,7 @@ class Main(MemeSearchToolWorkflow, MemeStealToolWorkflow, Star):
 
         注意：
         - image_ref 必须从当前消息中已有的图片 URL 或文件路径中选择，必填。
-        - 工具返回的 VLM 分析结果可用于向用户说明偷到了什么。
+        - 收完只需告诉对方收了还是没收，不要复述工具返回的描述、标签和场景。
         - 当插件的表情包偷取总开关关闭，或当前会话被偷取黑白名单禁用时，本工具会拒绝入库。
 
         Args:

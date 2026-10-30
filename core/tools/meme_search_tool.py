@@ -247,7 +247,7 @@ class MemeSearchToolWorkflow:
             turn_state.set_candidates([])
 
             mode_desc = "Telegram贴纸" if sent_as_sticker else "图片"
-            success_msg = f"发送成功（{mode_desc}）。\n\n你发送的表情包：\n- 编号：{emoji_id}\n- 分类：{emotion}\n- 描述：{desc}"
+            success_msg = f"发送成功（{mode_desc}）。\n\n你发送的表情包：\n- 编号：{emoji_id}\n- 分类：{emotion}\n- 描述：{desc}\n\n图已发出，不要再用文字介绍或解释这张图。"
             logger.info(f"[Tool] {success_msg}")
             yield success_msg
             return
